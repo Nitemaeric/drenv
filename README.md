@@ -1,0 +1,75 @@
+# drenv - DragonRuby Environment Manager
+
+**drenv** is a cross-platform CLI tool that helps you declutter your DragonRuby
+installations.
+
+**drenv** is built with [Deno](https://deno.com) and is inspired by
+[rbenv](https://rbenv.org).
+
+## Installation
+
+For now, you can install **drenv** by downloading the binary from this repo's
+releases page.
+
+Alternatively, you can clone this repo and build the binary yourself.
+
+```sh
+deno compile --allow-read --allow-write --allow-env --output=builds/drenv --target=aarch64-apple-darwin main.ts
+```
+
+## Usage
+
+### `drenv help [command]`
+
+This command will display the help message for **drenv**.
+
+Calling `drenv` without any arguments will also display this message.
+
+```
+Usage: drenv [options] [command]
+
+CLI to manage DragonRuby environments
+
+Options:
+  -V, --version     output the version number
+  -h, --help        display help for command
+
+Commands:
+  new <name>        Create a new DragonRuby project
+  register <path>   Register a DragonRuby installation
+  global [version]  Get or set the global version of DragonRuby
+  versions          List out all locally installed versions of DragonRuby
+  help [command]    display help for command
+```
+
+### `drenv register <path>`
+
+This command will copy a local DragonRuby installation at the specified path
+into **drenv**'s home directory.
+
+> [!IMPORTANT]
+> You will need to register at least one DragonRuby installation before you can
+> use **drenv**.
+
+### `drenv global <version>`
+
+This command sets the version of DragonRuby that **drenv** will use when
+creating new projects.
+
+### `drenv new <name>`
+
+This command will create a new DragonRuby project with the specified name.
+
+Under the hood, all **drenv** does is copy the contents of the global DragonRuby
+installation into the new project directory.
+
+### `drenv versions`
+
+This command will list out all registered versions of DragonRuby.
+
+```
+  5.32
+* 6.3
+```
+
+Tested on MacOS Macbook Pro M1 with DragonRuby 5.32 and 6.3.
