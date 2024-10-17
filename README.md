@@ -28,17 +28,19 @@ Calling `drenv` without any arguments will also display this message.
 ```
 Usage: drenv [options] [command]
 
-CLI to manage DragonRuby environments
+CLI to manage DragonRuby environments.
 
 Options:
   -V, --version     output the version number
   -h, --help        display help for command
 
 Commands:
-  new <name>        Create a new DragonRuby project
-  register <path>   Register a DragonRuby installation
-  global [version]  Get or set the global version of DragonRuby
-  versions          List out all locally installed versions of DragonRuby
+  setup             Setup your shell profile to use drenv.
+  new <name>        Create a new DragonRuby project.
+  register <path>   Register a DragonRuby installation. This moves the installation to the $HOME/.drenv directory.
+  global [version]  Get or set the global version of DragonRuby.
+  local <version>   Get or set the local version of DragonRuby.
+  versions          List out all locally installed versions of DragonRuby.
   help [command]    display help for command
 ```
 
