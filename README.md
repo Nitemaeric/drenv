@@ -28,19 +28,20 @@ Calling `drenv` without any arguments will also display this message.
 ```
 Usage: drenv [options] [command]
 
-CLI to manage DragonRuby environments.
+CLI to manage DragonRuby environments
 
 Options:
   -V, --version     output the version number
   -h, --help        display help for command
 
 Commands:
-  setup             Setup your shell profile to use drenv.
-  new <name>        Create a new DragonRuby project.
-  register <path>   Register a DragonRuby installation. This moves the installation to the $HOME/.drenv directory.
-  global [version]  Get or set the global version of DragonRuby.
-  local [version]   Get or set the local version of DragonRuby.
-  versions          List out all locally installed versions of DragonRuby.
+  setup             Setup your shell profile to use drenv
+  new <name>        Create a new DragonRuby project
+  register <path>   Register a DragonRuby installation
+  global [version]  Get or set the global version of DragonRuby
+  local [version]   Get or set the local version of DragonRuby
+  versions          List out all locally installed versions of DragonRuby
+  upgrade           Upgrade the version of drenv
   help [command]    display help for command
 ```
 
@@ -60,10 +61,13 @@ into **drenv**'s home directory.
 > You will need to register at least one DragonRuby installation before you can
 > use **drenv**.
 
-### `drenv global <version>`
+### `drenv global [version]`
 
 This command sets the version of DragonRuby that **drenv** will use when
 creating new projects.
+
+If you call `drenv global` without any arguments, it will display the current
+global version.
 
 ### `drenv new <name>`
 
@@ -81,13 +85,19 @@ Under the hood, all **drenv** does is copy the contents of the global DragonRuby
 installation into the current project directory, excluding the `mygame`
 directory.
 
+### `drenv upgrade`
+
+This command will download and upgrade your **drenv** installation to the latest
+version.
+
 ### `drenv versions`
 
 This command will list out all registered versions of DragonRuby.
 
 ```
   5.32
+  6.4
 * 6.3
 ```
 
-Tested on MacOS Macbook Pro M1 with DragonRuby 5.32 and 6.3.
+Tested on MacOS Macbook Pro M1 with DragonRuby 5.32, 6.3, and 6.4.
