@@ -25,7 +25,7 @@ const actionRunner = (fn: (...args: any[]) => Promise<any>) => {
 program
   .name("drenv")
   .description("CLI to manage DragonRuby environments.")
-  .version("0.2.1");
+  .version("0.2.2");
 
 program.command("setup")
   .description("Setup your shell profile to use drenv.")
@@ -49,7 +49,7 @@ program.command("global")
   .action(actionRunner(global));
 
 program.command("local")
-  .argument("<version>", "Version of DragonRuby to use")
+  .argument("[version]", "Version of DragonRuby to use")
   .description("Get or set the local version of DragonRuby.")
   .action(actionRunner(local));
 

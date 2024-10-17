@@ -39,7 +39,7 @@ Commands:
   new <name>        Create a new DragonRuby project.
   register <path>   Register a DragonRuby installation. This moves the installation to the $HOME/.drenv directory.
   global [version]  Get or set the global version of DragonRuby.
-  local <version>   Get or set the local version of DragonRuby.
+  local [version]   Get or set the local version of DragonRuby.
   versions          List out all locally installed versions of DragonRuby.
   help [command]    display help for command
 ```
@@ -71,7 +71,7 @@ This command will create a new DragonRuby project with the specified name.
 Under the hood, all **drenv** does is copy the contents of the global DragonRuby
 installation into the new project directory.
 
-### `drenv local <version>`
+### `drenv local [version]`
 
 This command will update your current directory's DragonRuby version to the specified version.
 
