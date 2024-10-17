@@ -1,5 +1,7 @@
 import { exists } from "jsr:@std/fs";
 
+import { homePath, versionsPath } from "../constants.ts";
+
 export class NotInstalled extends Error {
   version: string;
 
@@ -27,22 +29,17 @@ export default async function global(version: string | undefined = undefined) {
 }
 
 const setGlobalVersion = async (version: string) => {
-  if (!await exists(`${Deno.env.get("HOME")}/.drenv/versions/${version}`)) {
+  if (!await exists(`${versionsPath}/${version}`)) {
     throw new NotInstalled(version);
   }
 
-  return Deno.writeTextFile(
-    `${Deno.env.get("HOME")}/.drenv/.dragonruby-version`,
-    version,
-  );
+  return Deno.writeTextFile(`${homePath}/.dragonruby-version`, version);
 };
 
 const getGlobalVersion = async () => {
-  if (!await exists(`${Deno.env.get("HOME")}/.drenv/.dragonruby-version`)) {
+  if (!await exists(`${homePath}/.dragonruby-version`)) {
     throw new NoGlobalVersion();
   }
 
-  return Deno.readTextFile(
-    `${Deno.env.get("HOME")}/.drenv/.dragonruby-version`,
-  );
+  return Deno.readTextFile(`${homePath}/.dragonruby-version`);
 };

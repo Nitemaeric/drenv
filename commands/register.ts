@@ -1,6 +1,7 @@
-import { move } from "jsr:@std/fs";
+import { ensureDir, move } from "jsr:@std/fs";
 
 import { readVersion } from "../utils/read-version.ts";
+import { versionsPath } from "../constants.ts";
 
 export default async function register(path: string) {
   // TODO: Validate that directory is a DragonRuby installation
@@ -11,5 +12,7 @@ export default async function register(path: string) {
     throw new Error("drenv: DragonRuby installation is missing version");
   }
 
-  return move(path, `${Deno.env.get("HOME")}/.drenv/versions/${version}`);
+  await ensureDir(versionsPath);
+
+  return move(path, `${versionsPath}/${version}`);
 }
