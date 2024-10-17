@@ -1,6 +1,7 @@
 import { copy, exists } from "jsr:@std/fs";
 
 import { readVersion } from "../utils/read-version.ts";
+import { versionsPath } from "../constants.ts";
 
 export class NotInstalled extends Error {
   version: string;
@@ -22,7 +23,7 @@ export default async function local(version: string | undefined = undefined) {
 }
 
 const setLocalVersion = async (version: string) => {
-  const sourceDirectory = `${Deno.env.get("HOME")}/.drenv/versions/${version}`;
+  const sourceDirectory = `${versionsPath}/${version}`;
 
   if (!await exists(sourceDirectory)) {
     throw new NotInstalled(version);

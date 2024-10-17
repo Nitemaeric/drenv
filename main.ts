@@ -25,7 +25,7 @@ const actionRunner = (fn: (...args: any[]) => Promise<any>) => {
 program
   .name("drenv")
   .description("CLI to manage DragonRuby environments.")
-  .version("0.2.2");
+  .version("0.2.3");
 
 program.command("setup")
   .description("Setup your shell profile to use drenv.")

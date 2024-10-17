@@ -1,12 +1,9 @@
 import { copy } from "jsr:@std/fs";
 
-import { readVersion } from "../utils/read-version.ts";
+import { versionsPath } from "../constants.ts";
 
 import global from "./global.ts";
 
 export default async function newCommand(name: string) {
-  return copy(
-    `${Deno.env.get("HOME")}/.drenv/versions/${await global()}`,
-    name,
-  );
+  return copy(`${versionsPath}/${await global()}`, name);
 }

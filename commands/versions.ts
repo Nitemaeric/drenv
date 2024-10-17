@@ -1,9 +1,8 @@
 import { readVersion } from "../utils/read-version.ts";
+import { versionsPath } from "../constants.ts";
 
 export default async function versions() {
-  const directories = await Deno.readDir(
-    `${Deno.env.get("HOME")}/.drenv/versions/`,
-  );
+  const directories = await Deno.readDir(versionsPath);
 
   const currentVersion = await readVersion("./CHANGELOG-CURR.txt");
 
