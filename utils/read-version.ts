@@ -1,6 +1,8 @@
 import { readFirstLine } from "./read-first-line.ts";
 
-export const readVersion = async (path: string): Promise<string> => {
+export const readVersion = async (
+  path: string,
+): Promise<string | undefined> => {
   let currentVersion;
 
   try {

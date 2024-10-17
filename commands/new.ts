@@ -4,7 +4,7 @@ import { readVersion } from "../utils/read-version.ts";
 
 import global from "./global.ts";
 
-export default async function newCommand(name: string | undefined = undefined) {
+export default async function newCommand(name: string) {
   return copy(
     `${Deno.env.get("HOME")}/.drenv/versions/${await global()}`,
     name,

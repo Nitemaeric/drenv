@@ -4,6 +4,7 @@ import global from "./commands/global.ts";
 import local from "./commands/local.ts";
 import newCommand from "./commands/new.ts";
 import register from "./commands/register.ts";
+import setup from "./commands/setup.ts";
 import versions from "./commands/versions.ts";
 
 const program = new Command();
@@ -24,7 +25,11 @@ const actionRunner = (fn: (...args: any[]) => Promise<any>) => {
 program
   .name("drenv")
   .description("CLI to manage DragonRuby environments.")
-  .version("0.2.0");
+  .version("0.2.1");
+
+program.command("setup")
+  .description("Setup your shell profile to use drenv.")
+  .action(actionRunner(setup));
 
 program.command("new")
   .argument("<name>", "Name of the new project")
@@ -44,7 +49,7 @@ program.command("global")
   .action(actionRunner(global));
 
 program.command("local")
-  .argument("[version]", "Version of DragonRuby to use")
+  .argument("<version>", "Version of DragonRuby to use")
   .description("Get or set the local version of DragonRuby.")
   .action(actionRunner(local));
 

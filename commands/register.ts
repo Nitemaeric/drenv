@@ -1,6 +1,8 @@
+import { move } from "jsr:@std/fs";
+
 import { readVersion } from "../utils/read-version.ts";
 
-export default async function register(path: string | undefined = undefined) {
+export default async function register(path: string) {
   // TODO: Validate that directory is a DragonRuby installation
 
   const version = await readVersion(path + "/CHANGELOG-CURR.txt");
