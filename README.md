@@ -42,6 +42,12 @@ Commands:
   help [command]    display help for command
 ```
 
+### `drenv setup`
+
+This command will move the executable to your home directory and show instructions on how to add it to your `$PATH`.
+
+This allows you to call `drenv` from anywhere in your terminal.
+
 ### `drenv register <path>`
 
 This command will copy a local DragonRuby installation at the specified path
@@ -62,6 +68,13 @@ This command will create a new DragonRuby project with the specified name.
 
 Under the hood, all **drenv** does is copy the contents of the global DragonRuby
 installation into the new project directory.
+
+### `drenv local <version>`
+
+This command will update your current directory's DragonRuby version to the specified version.
+
+Under the hood, all **drenv** does is copy the contents of the global DragonRuby
+installation into the current project directory, excluding the `mygame` directory.
 
 ### `drenv versions`
 
