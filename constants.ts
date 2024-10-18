@@ -1,4 +1,4 @@
-export const version = "0.3.3";
+export const version = "0.3.4";
 export const homePath = `${Deno.env.get("HOME")}/.drenv`;
 export const versionsPath = `${homePath}/versions`;
 export const binPath = `${homePath}/bin`;

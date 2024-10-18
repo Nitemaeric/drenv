@@ -58,8 +58,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os.name }}.drenv
-          path: builds/*
+          name: ${{ matrix.os.name }}
+          path: ${{ startsWith(matrix.os.runner, 'windows') && 'builds/drenv.exe' || 'builds/drenv' }}
 
   release:
     runs-on: ubuntu-latest
@@ -73,14 +73,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: builds
+      - name: Rename files for release
+        run: |
+          mv builds/x86_64-pc-windows-msvc/drenv.exe builds/x86_64-pc-windows-msvc.drenv.exe
+          mv builds/x86_64-apple-darwin/drenv builds/x86_64-apple-darwin.drenv
+          mv builds/aarch64-apple-darwin/drenv builds/aarch64-apple-darwin.drenv
+          mv builds/x86_64-unknown-linux-gnu/drenv builds/x86_64-unknown-linux-gnu.drenv
+          mv builds/aarch64-unknown-linux-gnu/drenv builds/aarch64-unknown-linux-gnu.drenv
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            builds/x86_64-pc-windows-msvc.drenv
-            builds/x86_64-apple-darwin.drenv
-            builds/aarch64-apple-darwin.drenv
-            builds/x86_64-unknown-linux-gnu.drenv
-            builds/aarch64-unknown-linux-gnu.drenv
+          files: builds/*
           fail_on_unmatched_files: true
           generate_release_notes: true
