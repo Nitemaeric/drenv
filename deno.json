@@ -1,7 +1,7 @@
 {
   "tasks": {
     "dev": "deno run --watch main.ts",
-    "compile": "deno compile -A --output=builds/drenv main.ts",
+    "compile": "deno compile -A --output=builds/ main.ts",
     "compile:windows-x86": "deno compile -A --output=builds/x86_64-pc-windows-msvc.drenv --target=x86_64-pc-windows-msvc main.ts",
     "compile:macos-x86": "deno compile -A --output=builds/x86_64-apple-darwin.drenv --target=x86_64-apple-darwin main.ts",
     "compile:macos-arm64": "deno compile -A --output=builds/aarch64-apple-darwin.drenv --target=aarch64-apple-darwin main.ts",

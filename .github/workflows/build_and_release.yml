@@ -1,0 +1,74 @@
+name: Build and Release
+
+on:
+  push:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os:
+          - name: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - name: x86_64-apple-darwin
+            runner: macos-13
+          - name: aarch64-apple-darwin
+            runner: macos-latest
+          - name: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - name: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.os.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run Tests
+        run: deno test -A
+
+  build:
+    strategy:
+      matrix:
+        os:
+          - name: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - name: x86_64-apple-darwin
+            runner: macos-13
+          - name: aarch64-apple-darwin
+            runner: macos-latest
+          - name: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - name: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.os.runner }}
+    needs:
+      - test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Build
+        run: deno compile -A --output=builds/ --target=${{ matrix.os.name }} main.ts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os.name }}.drenv
+          path: builds/*
+
+  release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - build
+    steps:
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/*
+          token: ${{ secrets.GITHUB_TOKEN }}
