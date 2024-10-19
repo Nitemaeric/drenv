@@ -57,6 +57,8 @@ This allows you to call `drenv` from anywhere in your terminal.
 This command will copy a local DragonRuby installation at the specified path
 into **drenv**'s home directory.
 
+The path should point to the directory that contains the `dragonruby` executable.
+
 > [!IMPORTANT]
 > You will need to register at least one DragonRuby installation before you can
 > use **drenv**.
