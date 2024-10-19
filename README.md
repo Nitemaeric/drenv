@@ -1,10 +1,10 @@
 # drenv - DragonRuby Environment Manager
 
-**drenv** is a cross-platform CLI tool that helps you declutter your DragonRuby
-installations.
+**drenv** is a cross-platform version and package manager CLI for DragonRuby.
 
 **drenv** is built with [Deno](https://deno.com) and is inspired by
-[rbenv](https://rbenv.org).
+[rbenv](https://rbenv.org) for version management and
+[npm](https://www.npmjs.com) for package management.
 
 ## Installation
 
