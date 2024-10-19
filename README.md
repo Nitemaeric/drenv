@@ -17,6 +17,9 @@ Alternatively, you can clone this repo and build the binary yourself.
 deno compile --allow-read --allow-write --allow-env --output=builds/drenv --target=aarch64-apple-darwin main.ts
 ```
 
+> [!NOTE]
+> Once **drenv** has been installed, you can seamlessly update to the latest version by running `drenv upgrade`.
+
 ## Usage
 
 ### `drenv help [command]`
