@@ -1,5 +1,8 @@
 # drenv - DragonRuby Environment Manager
 
+> [!WARNING]
+> Windows is currently not supported. See [#8](https://github.com/Nitemaeric/drenv/issues/8) for more information.
+
 **drenv** is a cross-platform CLI tool that helps you declutter your DragonRuby
 installations.
 
