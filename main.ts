@@ -1,5 +1,6 @@
 import { Command } from "npm:commander";
 
+import add from "./commands/add.ts";
 import global from "./commands/global.ts";
 import local from "./commands/local.ts";
 import newCommand from "./commands/new.ts";
@@ -46,6 +47,11 @@ program.command("register")
     "Register a DragonRuby installation. This moves the installation to the $HOME/.drenv directory.",
   )
   .action(actionRunner(register));
+
+program.command("add")
+  .argument("<recipe>", "Name of the recipe to add")
+  .description("Setup a pre-configured library")
+  .action(actionRunner(add));
 
 program.command("global")
   .argument("[version]", "Version of DragonRuby to use")
