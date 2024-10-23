@@ -21,7 +21,8 @@ deno compile --allow-read --allow-write --allow-env --output=builds/drenv --targ
 ```
 
 > [!NOTE]
-> Once **drenv** has been installed, you can seamlessly update to the latest version by running `drenv upgrade`.
+> Once **drenv** has been installed, you can seamlessly update to the latest
+> version by running `drenv upgrade`.
 
 ## Usage
 
@@ -63,7 +64,8 @@ This allows you to call `drenv` from anywhere in your terminal.
 This command will copy a local DragonRuby installation at the specified path
 into **drenv**'s home directory.
 
-The path should point to the directory that contains the `dragonruby` executable.
+The path should point to the directory that contains the `dragonruby`
+executable.
 
 > [!IMPORTANT]
 > You will need to register at least one DragonRuby installation before you can
@@ -107,5 +109,18 @@ This command will list out all registered versions of DragonRuby.
   6.4
 * 6.3
 ```
+
+### `drenv install <version>`
+
+This command will download and install the specified version of DragonRuby.
+
+This will prompt you to enter your https://dragonruby.org credentials.
+
+> [!IMPORTANT]
+> This command only supports installing Indie and Pro versions of DragonRuby.
+
+### `drenv login` - Requires support from https://dragonruby.org
+
+This command will prompt you to enter your DragonRuby credentials and store a token for future use.
 
 Tested on MacOS Macbook Pro M1 with DragonRuby 5.32, 6.3, and 6.4.
