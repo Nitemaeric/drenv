@@ -1,4 +1,4 @@
-import { greaterThan, parse } from "jsr:@std/semver";
+import { greaterThan, parse } from "@std/semver";
 
 import config from "../deno.json" with { type: "json" };
 import { drenvBinPath } from "../constants.ts";
@@ -9,7 +9,7 @@ type Asset = {
   node_id: string;
   name: string;
   label: string | null;
-  uploader: any;
+  uploader: unknown;
   content_type: string;
   state: string;
   size: number;
