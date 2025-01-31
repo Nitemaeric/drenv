@@ -2,7 +2,19 @@ import { readVersion } from "../utils/read-version.ts";
 import { versionsPath } from "../constants.ts";
 
 export default async function versions() {
-  const directories = await Deno.readDir(versionsPath);
+  const directories = (await Array.fromAsync(Deno.readDir(versionsPath)))
+    .toSorted(
+      (first, second) => {
+        const [secondMajor, secondMinor] = second.name.split(".").map(Number);
+        const [firstMajor, firstMinor] = first.name.split(".").map(Number);
+
+        if (firstMajor == secondMajor) {
+          return secondMinor - firstMinor;
+        }
+
+        return (secondMajor - firstMajor);
+      },
+    );
 
   const currentVersion = await readVersion("./CHANGELOG-CURR.txt");
 
