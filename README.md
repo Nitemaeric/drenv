@@ -1,7 +1,8 @@
 # drenv - DragonRuby Environment Manager
 
 > [!WARNING]
-> Windows is currently not supported. See [#8](https://github.com/Nitemaeric/drenv/issues/8) for more information.
+> Windows is currently not supported. See
+> [#8](https://github.com/Nitemaeric/drenv/issues/8) for more information.
 
 **drenv** is a cross-platform CLI tool that helps you declutter your DragonRuby
 installations.
@@ -17,11 +18,12 @@ releases page.
 Alternatively, you can clone this repo and build the binary yourself.
 
 ```sh
-deno compile --allow-read --allow-write --allow-env --output=builds/drenv --target=aarch64-apple-darwin main.ts
+deno compile --allow-read --allow-write --allow-env --unstable-kv --output=builds/drenv --target=aarch64-apple-darwin main.ts
 ```
 
 > [!NOTE]
-> Once **drenv** has been installed, you can seamlessly update to the latest version by running `drenv upgrade`.
+> Once **drenv** has been installed, you can seamlessly update to the latest
+> version by running `drenv upgrade`.
 
 ## Usage
 
@@ -63,7 +65,8 @@ This allows you to call `drenv` from anywhere in your terminal.
 This command will copy a local DragonRuby installation at the specified path
 into **drenv**'s home directory.
 
-The path should point to the directory that contains the `dragonruby` executable.
+The path should point to the directory that contains the `dragonruby`
+executable.
 
 > [!IMPORTANT]
 > You will need to register at least one DragonRuby installation before you can
