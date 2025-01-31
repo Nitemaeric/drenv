@@ -1,8 +1,8 @@
-import { beforeAll, describe, it } from "jsr:@std/testing/bdd";
-import { assertEquals, assertRejects } from "jsr:@std/assert";
-import { ensureDir } from "jsr:@std/fs";
+import { beforeAll, describe, it } from "@std/testing/bdd";
+import { assertEquals, assertRejects } from "@std/assert";
+import { ensureDir } from "@std/fs";
 
-import global, { NoGlobalVersion, NotInstalled } from "./global.ts";
+import global, { NoGlobalVersion } from "./global.ts";
 
 describe("global", () => {
   describe("when an argument is passed", () => {
@@ -48,7 +48,7 @@ describe("global", () => {
         await Deno.remove(`${Deno.env.get("HOME")}/.drenv/.dragonruby-version`);
       });
 
-      it("raises an error", async () => {
+      it("raises an error", () => {
         assertRejects(
           async () => {
             await global();
