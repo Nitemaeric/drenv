@@ -9,7 +9,9 @@ export const readVersion = async (
     const content = await readFirstLine(path);
 
     currentVersion = content.match(/[0-9\.]+/)?.[0];
-  } catch (error) {}
+  } catch (_error) {
+    // Do nothing
+  }
 
   return currentVersion;
 };
