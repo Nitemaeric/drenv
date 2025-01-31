@@ -2,7 +2,7 @@
   "version": "0.5.0",
   "tasks": {
     "dev": "deno run --watch main.ts",
-    "compile": "deno compile -A --output=builds/ main.ts",
+    "compile": "deno compile -A --unstable-kv --output=builds/ main.ts",
     "compile:windows-x86": "deno compile -A --output=builds/x86_64-pc-windows-msvc.drenv --target=x86_64-pc-windows-msvc main.ts",
     "compile:macos-x86": "deno compile -A --output=builds/x86_64-apple-darwin.drenv --target=x86_64-apple-darwin main.ts",
     "compile:macos-arm64": "deno compile -A --output=builds/aarch64-apple-darwin.drenv --target=aarch64-apple-darwin main.ts",
@@ -11,8 +11,15 @@
     "compile:all": "deno task compile:windows-x86 & deno task compile:macos-x86 & deno task compile:macos-arm64 & deno task compile:linux-x86 & deno task compile:linux-arm64"
   },
   "imports": {
+    "@astral/astral": "jsr:@astral/astral@^0.5.2",
     "@std/assert": "jsr:@std/assert@1",
-    "@std/fs": "jsr:@std/fs@^1.0.4",
-    "commander": "npm:commander@^12.1.0"
+    "@std/cli": "jsr:@std/cli@^1.0.12",
+    "@std/fs": "jsr:@std/fs@^1.0.11",
+    "@std/path": "jsr:@std/path@^1.0.8",
+    "@std/semver": "jsr:@std/semver@^1.0.3",
+    "@std/testing": "jsr:@std/testing@^1.0.9",
+    "@zip-js/zip-js": "jsr:@zip-js/zip-js@^2.7.57",
+    "commander": "npm:commander@^13.1.0",
+    "ora": "npm:ora@^8.1.1"
   }
 }
