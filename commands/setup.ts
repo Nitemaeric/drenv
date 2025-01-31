@@ -1,4 +1,4 @@
-import { ensureDir, exists, move } from "jsr:@std/fs";
+import { ensureDir, exists, move } from "@std/fs";
 
 import { binPath, shell } from "../constants.ts";
 
