@@ -76,8 +76,8 @@ version.
 This command will copy a local DragonRuby installation at the specified path
 into **drenv**'s home directory.
 
-The path should point to the directory that contains the `dragonruby`
-executable.
+The path should point to the downloaded .zip file or the directory that contains
+the `dragonruby` executable.
 
 > [!IMPORTANT]
 > You will need to register at least one DragonRuby installation before you can
@@ -131,4 +131,5 @@ Available recipes:
 
 ---
 
-Tested on a MacOS Macbook Pro M1 with DragonRuby standard 5.32, 6.3, 6.4, and 6.18.
+Tested on a MacOS Macbook Pro M1 with DragonRuby standard 5.32, 6.3, 6.4, and
+6.18.
