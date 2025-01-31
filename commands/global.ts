@@ -1,4 +1,4 @@
-import { exists } from "jsr:@std/fs";
+import { exists } from "@std/fs";
 
 import { homePath, versionsPath } from "../constants.ts";
 
@@ -20,7 +20,7 @@ export class NoGlobalVersion extends Error {
   }
 }
 
-export default async function global(version: string | undefined = undefined) {
+export default function global(version: string | undefined = undefined) {
   if (version) {
     return setGlobalVersion(version);
   } else {
