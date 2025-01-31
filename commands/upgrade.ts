@@ -1,7 +1,7 @@
 import { greaterThan, parse } from "jsr:@std/semver";
 
-import { program } from "../main.ts";
-import { drenvBinPath, version } from "../constants.ts";
+import config from "../deno.json" with { type: "json" };
+import { drenvBinPath } from "../constants.ts";
 
 type Asset = {
   url: string;
@@ -20,7 +20,7 @@ type Asset = {
 };
 
 export default async function upgrade() {
-  console.log(`Current version is v${program.version()}`);
+  console.log(`Current version is ${config.version}`);
   console.log("Checking for updates...");
 
   const dataResponse = await fetch(
@@ -28,7 +28,7 @@ export default async function upgrade() {
   );
   const data = await dataResponse.json();
 
-  const localVersion = parse(version);
+  const localVersion = parse(config.version);
   const remoteVersion = parse(data.tag_name.slice(1));
 
   if (greaterThan(remoteVersion, localVersion)) {

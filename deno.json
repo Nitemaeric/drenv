@@ -1,4 +1,5 @@
 {
+  "version": "0.5.0",
   "tasks": {
     "dev": "deno run --watch main.ts",
     "compile": "deno compile -A --output=builds/ main.ts",
