@@ -1,4 +1,4 @@
-import { copy } from "jsr:@std/fs";
+import { copy } from "@std/fs";
 
 import { versionsPath } from "../constants.ts";
 
