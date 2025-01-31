@@ -1,4 +1,5 @@
 import { Command } from "npm:commander";
+import config from "./deno.json" with { type: "json" };
 
 import add from "./commands/add.ts";
 import global from "./commands/global.ts";
@@ -8,8 +9,6 @@ import register from "./commands/register.ts";
 import setup from "./commands/setup.ts";
 import upgrade from "./commands/upgrade.ts";
 import versions from "./commands/versions.ts";
-
-import { version } from "./constants.ts";
 
 export const program = new Command();
 
@@ -29,7 +28,7 @@ const actionRunner = (fn: (...args: any[]) => Promise<any>) => {
 program
   .name("drenv")
   .description("CLI to manage DragonRuby environments")
-  .version(version);
+  .version(config.version);
 
 program.command("setup")
   .description("Setup your shell profile to use drenv")
