@@ -1,4 +1,4 @@
-import { copy, exists } from "jsr:@std/fs";
+import { copy, exists } from "@std/fs";
 
 import { readVersion } from "../utils/read-version.ts";
 import { versionsPath } from "../constants.ts";
@@ -14,7 +14,7 @@ export class NotInstalled extends Error {
   }
 }
 
-export default async function local(version: string | undefined = undefined) {
+export default function local(version: string | undefined = undefined) {
   if (version) {
     return setLocalVersion(version);
   } else {
@@ -29,7 +29,7 @@ const setLocalVersion = async (version: string) => {
     throw new NotInstalled(version);
   }
 
-  const items = await Deno.readDir(sourceDirectory);
+  const items = Deno.readDir(sourceDirectory);
 
   for await (const item of items) {
     if (item.name == "mygame") {
@@ -42,6 +42,6 @@ const setLocalVersion = async (version: string) => {
   }
 };
 
-const getLocalVersion = async () => {
+const getLocalVersion = () => {
   return readVersion("./CHANGELOG-CURR.txt");
 };
