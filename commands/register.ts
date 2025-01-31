@@ -1,18 +1,69 @@
-import { ensureDir, move } from "jsr:@std/fs";
+import { ensureDir, ensureFile, exists, move } from "@std/fs";
+import { extname, resolve } from "@std/path";
+import { configure, ZipReaderStream } from "@zip-js/zip-js";
 
-import { readVersion } from "../utils/read-version.ts";
 import { versionsPath } from "../constants.ts";
+import { versionCommand } from "../utils/version.ts";
+
+configure({ useWebWorkers: false });
 
 export default async function register(path: string) {
-  // TODO: Validate that directory is a DragonRuby installation
+  const zipOrDirectory = await Deno.open(path);
 
-  const version = await readVersion(path + "/CHANGELOG-CURR.txt");
-
-  if (!version) {
-    throw new Error("drenv: DragonRuby installation is missing version");
+  if (extname(path) === ".zip") {
+    path = await extractZip(zipOrDirectory);
   }
+
+  const directory = await Deno.open(path);
+  const directoryInfo = await directory.stat();
+
+  if (!directoryInfo.isDirectory) {
+    throw new Error(
+      "drenv: <path> must be a directory with the dragonruby executable or a zip file",
+    );
+  }
+
+  const version = await versionCommand(path);
 
   await ensureDir(versionsPath);
 
-  return move(path, `${versionsPath}/${version}`);
+  if (await exists(`${versionsPath}/${version}`)) {
+    throw new Error(
+      `drenv: ${version} is already installed`,
+    );
+  }
+
+  await move(path, `${versionsPath}/${version}`);
+
+  await Deno.remove("./tmp", { recursive: true });
+
+  return `drenv: Installed ${version}`;
 }
+
+const extractZip = async (zip: Deno.FsFile) => {
+  let directoryPath!: string;
+
+  for await (
+    const entry of zip.readable.pipeThrough(new ZipReaderStream())
+  ) {
+    const fullPath = resolve("./tmp/", entry.filename);
+
+    if (entry.directory) {
+      directoryPath ??= fullPath;
+
+      await ensureDir(fullPath);
+
+      continue;
+    }
+
+    await ensureFile(fullPath);
+
+    await entry.readable?.pipeTo((await Deno.create(fullPath)).writable);
+
+    if (entry.executable) {
+      await Deno.chmod(fullPath, 0o755);
+    }
+  }
+
+  return directoryPath;
+};
