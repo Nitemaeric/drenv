@@ -1,5 +1,5 @@
 {
-  "version": "0.5.1",
+  "version": "0.5.2",
   "tasks": {
     "dev": "deno run --watch main.ts",
     "compile": "deno compile -A --unstable-kv --output=builds/ main.ts",
