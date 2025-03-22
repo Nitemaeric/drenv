@@ -4,6 +4,7 @@ import { existsSync } from "@std/fs";
 import ora from "ora";
 
 import register from "./register.ts";
+import { homePath } from "../constants.ts";
 
 const buildTargetLookup: Record<string, string> = {
   "x86_64-pc-windows-msvc": "dragonruby-gtk-windows-amd64.zip",
@@ -20,7 +21,7 @@ export default async function install(tier: string = "standard") {
     throw new Error("drenv: Only the standard tier is supported at this time");
   }
 
-  const kv = await Deno.openKv("database.db");
+  const kv = await Deno.openKv(homePath + "/database.db");
 
   let username: string = (await kv.get(["itch", "username"])).value as string;
   let password: string = (await kv.get(["itch", "password"])).value as string;
