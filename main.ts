@@ -5,7 +5,7 @@ import config from "./deno.json" with { type: "json" };
 import add from "./commands/add.ts";
 import global from "./commands/global.ts";
 import install from "./commands/install.ts";
-import local from "./commands/local.ts";
+import update from "./commands/update.ts";
 import newCommand from "./commands/new.ts";
 import register from "./commands/register.ts";
 import setup from "./commands/setup.ts";
@@ -64,10 +64,10 @@ program
   .action(actionRunner(global));
 
 program
-  .command("local")
+  .command("update")
   .argument("[version]", "Version of DragonRuby to use")
   .description("Get or set the local version of DragonRuby")
-  .action(actionRunner(local));
+  .action(actionRunner(update));
 
 program
   .command("versions")

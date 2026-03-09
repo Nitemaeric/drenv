@@ -101,7 +101,7 @@ Lists all registered versions, with the current local version marked:
 Creates a new DragonRuby project by copying the global version into a new
 directory.
 
-### `drenv local [version]`
+### `drenv update [version]`
 
 Updates the current directory's DragonRuby version, preserving the `mygame`
 directory.
