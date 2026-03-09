@@ -2,6 +2,7 @@ import { promptSecret } from "@std/cli";
 import { ensureDir } from "@std/fs";
 import ora, { type Ora } from "ora";
 
+import global, { NoGlobalVersion } from "./global.ts";
 import register from "./register.ts";
 import { homePath } from "../constants.ts";
 
@@ -197,7 +198,19 @@ export default async function install(tier: string = "standard") {
 
     spinner.text = "Installing...";
     const message = await register(`./tmp/${downloadName}`);
-    spinner.succeed(message);
+    const version = message.replace("drenv: Installed ", "");
+
+    let setAsGlobal = false;
+    try {
+      await global();
+    } catch (err) {
+      if (err instanceof NoGlobalVersion) {
+        await global(version);
+        setAsGlobal = true;
+      }
+    }
+
+    spinner.succeed(setAsGlobal ? `${message} (set as global)` : message);
   } catch (err) {
     spinner.fail((err as Error).message);
   } finally {
