@@ -115,8 +115,8 @@ async function getUploadId(
   }
 
   const uploads: { id: number; filename: string }[] = Array.isArray(
-    data.uploads,
-  )
+      data.uploads,
+    )
     ? data.uploads
     : Object.values(data.uploads);
 
@@ -188,7 +188,12 @@ export default async function install(tier: string = "standard") {
       ensureDir("./tmp"),
     ]);
 
-    await downloadUpload(apiKey, uploadId, downloadKeyId, `./tmp/${downloadName}`);
+    await downloadUpload(
+      apiKey,
+      uploadId,
+      downloadKeyId,
+      `./tmp/${downloadName}`,
+    );
 
     spinner.text = "Installing...";
     const message = await register(`./tmp/${downloadName}`);
