@@ -12,88 +12,81 @@ installations.
 
 ## Installation
 
-For now, you can install **drenv** by downloading the executable from this
-repo's releases page.
-
-Alternatively, you can clone this repo and build the executable yourself.
+Download the executable for your platform from the
+[releases page](https://github.com/Nitemaeric/drenv/releases), then run:
 
 ```sh
-deno compile --allow-read --allow-write --allow-env --unstable-kv --output=builds/drenv --target=aarch64-apple-darwin main.ts
+drenv setup
 ```
+
+This moves the executable to `~/.drenv/bin` and prints the line to add to your
+shell profile.
 
 > [!NOTE]
-> Once **drenv** has been installed, you can seamlessly update to the latest
-> version by running `drenv upgrade`.
+> On macOS, if you see a Gatekeeper warning, run:
+> ```sh
+> xattr -d com.apple.quarantine ./drenv
+> ```
 
-## Help
+> [!NOTE]
+> Once installed, keep **drenv** up to date by running `drenv upgrade`.
 
-### `drenv help [command]`
+Alternatively, you can build from source:
 
-This command will display the help message for **drenv**.
-
-Calling `drenv` without any arguments will also display this message.
-
-```
-Usage: drenv [options] [command]
-
-CLI to manage DragonRuby environments
-
-Options:
-  -V, --version     output the version number
-  -h, --help        display help for command
-
-Commands:
-  setup             Setup your shell profile to use drenv
-  new <name>        Create a new DragonRuby project
-  register <path>   Register a DragonRuby installation
-  add <recipe>      Setup a pre-configured library
-  global [version]  Get or set the global version of DragonRuby
-  local [version]   Get or set the local version of DragonRuby
-  versions          List out all locally installed versions of DragonRuby
-  upgrade           Upgrade the version of drenv
-  install [tier]    Install the latest version of drenv
-  help [command]    display help for command
+```sh
+deno compile -A --unstable-kv --output=builds/drenv --target=aarch64-apple-darwin main.ts
 ```
 
-## Managng **drenv**
+## Getting Started
 
-### `drenv setup`
+### 1. Install DragonRuby
 
-This command will move the executable to your home directory and show
-instructions on how to add it to your `$PATH`.
+```sh
+drenv install
+```
 
-This allows you to call `drenv` from anywhere in your terminal.
+This signs into your [itch.io](https://itch.io) account and downloads the
+latest version of DragonRuby GTK. Your credentials are stored as a revocable
+API key — never as a plaintext password.
 
-### `drenv upgrade`
+> [!NOTE]
+> `drenv install` requires a DragonRuby GTK purchase on itch.io.
+> Only the standard tier is supported at this time.
 
-This command will download and upgrade your **drenv** installation to the latest
-version.
+### 2. Set a global version
+
+```sh
+drenv global <version>
+```
+
+### 3. Create a project
+
+```sh
+drenv new my-game
+```
+
+---
 
 ## Managing DragonRuby Versions
 
+### `drenv install [tier]`
+
+Downloads and installs the latest version of DragonRuby GTK from itch.io.
+
 ### `drenv register <path>`
 
-This command will copy a local DragonRuby installation at the specified path
-into **drenv**'s home directory.
-
-The path should point to the downloaded .zip file or the directory that contains
-the `dragonruby` executable.
-
-> [!IMPORTANT]
-> You will need to register at least one DragonRuby installation before you can
-> use **drenv** to manage DragonRuby projects.
+Registers a local DragonRuby installation manually. The path can be a `.zip`
+file or a directory containing the `dragonruby` executable. Useful if you
+already have a copy downloaded.
 
 ### `drenv global [version]`
 
-This command sets the version of DragonRuby that **drenv** will use when
-creating new projects.
-
-If you call `drenv global` without any arguments, it will display the current
-global version.
+Sets the global DragonRuby version used when creating new projects. Running
+without arguments prints the current global version.
 
 ### `drenv versions`
 
-This command will list out all registered versions of DragonRuby.
+Lists all registered versions, with the current local version marked:
 
 ```
   6.4
@@ -105,31 +98,34 @@ This command will list out all registered versions of DragonRuby.
 
 ### `drenv new <name>`
 
-This command will create a new DragonRuby project with the specified name.
-
-Under the hood, all **drenv** does is copy the contents of the global DragonRuby
-installation into the new project directory.
+Creates a new DragonRuby project by copying the global version into a new
+directory.
 
 ### `drenv local [version]`
 
-This command will update your current directory's DragonRuby version to the
-specified version.
-
-Under the hood, all **drenv** does is copy the contents of the global DragonRuby
-installation into the current project directory, excluding the `mygame`
+Updates the current directory's DragonRuby version, preserving the `mygame`
 directory.
 
 ### `drenv add <recipe>`
 
-This command will run a pre-configured script that sets up a library or tool for
-your DragonRuby project.
+Installs a pre-configured library into your project.
 
 Available recipes:
 
-- [foodchain](https://github.com/pvande/foodchain) - Foodchain is a single-file
-  library to help you document and install your DragonRuby game's dependencies.
+- [foodchain](https://github.com/pvande/foodchain) - a single-file dependency
+  manager for DragonRuby games.
+
+## Managing drenv
+
+### `drenv setup`
+
+Moves the **drenv** executable to `~/.drenv/bin` and shows instructions for
+adding it to your `$PATH`.
+
+### `drenv upgrade`
+
+Downloads and installs the latest version of **drenv**.
 
 ---
 
-Tested on a MacOS Macbook Pro M1 with DragonRuby standard 5.32, 6.3, 6.4, and
-6.18.
+Tested on macOS (Apple Silicon) with DragonRuby standard 5.32, 6.3, 6.4, and 6.18.
