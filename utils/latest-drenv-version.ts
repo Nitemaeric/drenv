@@ -34,9 +34,9 @@ export const getLatestDrenvVersion = async (
   kv?: Deno.Kv,
 ): Promise<string | undefined> => {
   const ownsKv = !kv;
-  kv ??= await Deno.openKv(homePath + "/database.db");
-
   try {
+    kv ??= await Deno.openKv(homePath + "/database.db");
+
     const cached = (await kv.get(["drenv", "latestVersion"])).value as
       | CachedVersion
       | null;
@@ -60,6 +60,6 @@ export const getLatestDrenvVersion = async (
   } catch {
     return undefined;
   } finally {
-    if (ownsKv) kv.close();
+    if (ownsKv && kv) kv.close();
   }
 };
