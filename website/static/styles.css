@@ -47,6 +47,37 @@ html {
   margin-bottom: 1.5rem;
   margin-top: 1.5rem;
 }
+
+/* Subtle animated dot grid — premium and clearly perceptible */
+.hero-texture {
+  /* Soft grey dots for a calm, elegant background */
+  background-image: 
+    radial-gradient(
+      circle at 1px 1px, 
+      rgba(255, 255, 255, 0.098) 1.65px, 
+      transparent 0
+    );
+  background-size: 23px 23px;
+
+  /* Gentle, slow diagonal drift for subtle life */
+  animation: hero-texture-drift 30s linear infinite;
+
+  /* Fade out toward the bottom for a smooth transition into the next section */
+  mask-image: linear-gradient(to bottom, black 78%, transparent 96%);
+  -webkit-mask-image: linear-gradient(to bottom, black 78%, transparent 96%);
+
+  /* Background layer only — never block interaction */
+  pointer-events: none;
+}
+
+@keyframes hero-texture-drift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 23px 23px;
+  }
+}
 .text-4xl {
   font-size: 2.25rem;
   line-height: 2.5rem;

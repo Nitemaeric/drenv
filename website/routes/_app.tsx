@@ -6,7 +6,7 @@ export default function App({ Component }: PageProps) {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>drenv — DragonRuby Environment Manager</title>
-        <meta name="description" content="Install, manage, and switch between multiple DragonRuby versions with a simple CLI. The rbenv for DragonRuby." />
+        <meta name="description" content="Install, manage, and switch between multiple DragonRuby versions with a simple CLI. The DragonRuby Environment Manager." />
         <link rel="stylesheet" href="/styles.css" />
       </head>
       <body>
