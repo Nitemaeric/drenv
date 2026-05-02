@@ -4,3 +4,6 @@ builds
 tmp
 
 database.db
+
+# AI coding assistant local state (Claude Code, etc.)
+.claude/
