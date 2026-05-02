@@ -3,14 +3,15 @@ import { assertEquals, assertRejects } from "@std/assert";
 import { ensureDir } from "@std/fs";
 
 import global, { NoGlobalVersion } from "./global.ts";
+import { homePath, versionsPath } from "../constants.ts";
 
 describe("global", () => {
   describe("when an argument is passed", () => {
     describe("when DR version has been registered", () => {
       beforeAll(async () => {
-        await ensureDir(`${Deno.env.get("HOME")}/.drenv/versions/1.0.0`);
+        await ensureDir(`${versionsPath}/1.0.0`);
         await Deno.writeTextFile(
-          `${Deno.env.get("HOME")}/.drenv/versions/1.0.0/CHANGELOG-CURR.txt`,
+          `${versionsPath}/1.0.0/CHANGELOG-CURR.txt`,
           "* 1.0.0",
         );
       });
@@ -19,7 +20,7 @@ describe("global", () => {
         await global("1.0.0");
 
         const result = await Deno.readTextFile(
-          `${Deno.env.get("HOME")}/.drenv/.dragonruby-version`,
+          `${homePath}/.dragonruby-version`,
         );
 
         assertEquals(result, "1.0.0");
@@ -31,7 +32,7 @@ describe("global", () => {
     describe("when version has been set", () => {
       beforeAll(async () => {
         await Deno.writeTextFile(
-          `${Deno.env.get("HOME")}/.drenv/.dragonruby-version`,
+          `${homePath}/.dragonruby-version`,
           "1.0.0",
         );
       });
@@ -45,7 +46,7 @@ describe("global", () => {
 
     describe("when version has not been set", () => {
       beforeAll(async () => {
-        await Deno.remove(`${Deno.env.get("HOME")}/.drenv/.dragonruby-version`);
+        await Deno.remove(`${homePath}/.dragonruby-version`);
       });
 
       it("raises an error", () => {
