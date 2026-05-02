@@ -14,8 +14,15 @@ const compareVersions = (first: string, second: string) => {
 };
 
 export default async function versions() {
-  const directories = (await Array.fromAsync(Deno.readDir(versionsPath)))
-    .toSorted((first, second) => compareVersions(second.name, first.name));
+  let directories: Deno.DirEntry[] = [];
+  try {
+    directories = await Array.fromAsync(Deno.readDir(versionsPath));
+  } catch (_err) {
+    // No versions installed yet
+  }
+  directories = directories.toSorted((first, second) =>
+    compareVersions(second.name, first.name)
+  );
 
   const currentVersion = await readVersion("./CHANGELOG-CURR.txt");
 
