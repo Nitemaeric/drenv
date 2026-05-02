@@ -2,6 +2,7 @@
   "version": "0.6.0",
   "tasks": {
     "dev": "deno run --watch main.ts",
+    "release": "deno run -A scripts/release.ts",
     "compile": "deno compile -A --unstable-kv --output=builds/ main.ts",
     "compile:windows-x86": "deno compile -A --output=builds/x86_64-pc-windows-msvc.drenv --target=x86_64-pc-windows-msvc main.ts",
     "compile:macos-x86": "deno compile -A --output=builds/x86_64-apple-darwin.drenv --target=x86_64-apple-darwin main.ts",
