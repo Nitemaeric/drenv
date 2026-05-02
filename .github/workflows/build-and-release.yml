@@ -27,7 +27,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Run Tests
-        run: deno test -A
+        run: deno test -A --unstable-kv
 
   build:
     strategy:
