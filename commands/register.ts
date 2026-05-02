@@ -60,7 +60,7 @@ const extractZip = async (zip: Deno.FsFile) => {
 
     await entry.readable?.pipeTo((await Deno.create(fullPath)).writable);
 
-    if (entry.executable) {
+    if (entry.executable && Deno.build.os !== "windows") {
       await Deno.chmod(fullPath, 0o755);
     }
   }

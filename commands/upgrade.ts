@@ -50,7 +50,9 @@ export default async function upgrade() {
       }
 
       await downloadResponse.body.pipeTo(file.writable);
-      await Deno.chmod(drenvBinPath, 0o755);
+      if (Deno.build.os !== "windows") {
+        await Deno.chmod(drenvBinPath, 0o755);
+      }
 
       console.log(`Upgraded to ${data.tag_name}`);
     } else {
