@@ -1,4 +1,5 @@
 import { Argument, Command } from "commander";
+import { greaterThan, tryParse } from "@std/semver";
 
 import config from "./deno.json" with { type: "json" };
 
@@ -13,18 +14,43 @@ import setup from "./commands/setup.ts";
 import upgrade from "./commands/upgrade.ts";
 import versions from "./commands/versions.ts";
 
+import { getLatestDrenvVersion } from "./utils/latest-drenv-version.ts";
+
 export const program = new Command();
 
-const actionRunner = (fn: (...args: string[]) => Promise<unknown>) => {
-  return (...args: string[]): void | Promise<void> =>
-    fn(...args)
-      .then(
-        (value) => {
-          (typeof value === "string" || typeof value === "number") &&
-            console.log(value);
-        },
-      )
-      .catch((error) => console.error(error.message));
+const printDrenvUpdateNotice = async () => {
+  const latest = await getLatestDrenvVersion();
+  if (!latest) return;
+
+  const latestParsed = tryParse(latest);
+  const currentParsed = tryParse(config.version);
+  if (!latestParsed || !currentParsed) return;
+
+  if (greaterThan(latestParsed, currentParsed)) {
+    console.log(
+      `drenv update available. \`drenv upgrade\` to install v${latest}`,
+    );
+  }
+};
+
+const actionRunner = (
+  fn: (...args: string[]) => Promise<unknown>,
+  options: { skipUpdateCheck?: boolean } = {},
+) => {
+  return async (...args: string[]): Promise<void> => {
+    try {
+      const value = await fn(...args);
+      if (typeof value === "string" || typeof value === "number") {
+        console.log(value);
+      }
+    } catch (error) {
+      console.error((error as Error).message);
+    } finally {
+      if (!options.skipUpdateCheck) {
+        await printDrenvUpdateNotice();
+      }
+    }
+  };
 };
 
 program
@@ -86,7 +112,7 @@ program
 program
   .command("upgrade")
   .description("Upgrade the version of drenv")
-  .action(actionRunner(upgrade));
+  .action(actionRunner(upgrade, { skipUpdateCheck: true }));
 
 program
   .command("install")
