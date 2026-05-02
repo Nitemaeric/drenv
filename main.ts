@@ -3,6 +3,7 @@ import { Argument, Command } from "commander";
 import config from "./deno.json" with { type: "json" };
 
 import add from "./commands/add.ts";
+import changelog from "./commands/changelog.ts";
 import global from "./commands/global.ts";
 import install from "./commands/install.ts";
 import update from "./commands/update.ts";
@@ -68,6 +69,14 @@ program
   .argument("[version]", "Version of DragonRuby to use")
   .description("Get or set the local version of DragonRuby")
   .action(actionRunner(update));
+
+program
+  .command("changelog")
+  .argument("[version]", "Version of DragonRuby to print the changelog for")
+  .description(
+    "Print the changelog entry for a version (defaults to the latest installed)",
+  )
+  .action(actionRunner(changelog));
 
 program
   .command("versions")
