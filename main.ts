@@ -44,7 +44,7 @@ const actionRunner = (
         console.log(value);
       }
     } catch (error) {
-      console.error((error as Error).message);
+      console.error(error instanceof Error ? error.message : String(error));
     } finally {
       if (!options.skipUpdateCheck) {
         await printDrenvUpdateNotice();
