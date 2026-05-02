@@ -31,18 +31,24 @@ jobs:
 
   build:
     strategy:
+      fail-fast: false
       matrix:
         os:
           - name: x86_64-pc-windows-msvc
             runner: windows-latest
+            smoke: true
           - name: x86_64-apple-darwin
             runner: macos-14
+            smoke: false
           - name: aarch64-apple-darwin
             runner: macos-latest
+            smoke: true
           - name: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
+            smoke: true
           - name: aarch64-unknown-linux-gnu
             runner: ubuntu-latest
+            smoke: false
     runs-on: ${{ matrix.os.runner }}
     needs:
       - test
@@ -56,7 +62,7 @@ jobs:
       - name: Build
         run: deno compile -A --unstable-kv --output=builds/ --target=${{ matrix.os.name }} main.ts
       - name: Smoke test (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.os.smoke && runner.os == 'Windows'
         shell: pwsh
         run: |
           .\builds\drenv.exe --version
@@ -68,7 +74,7 @@ jobs:
             exit 1
           }
       - name: Smoke test (Unix)
-        if: runner.os != 'Windows'
+        if: matrix.os.smoke && runner.os != 'Windows'
         run: |
           ./builds/drenv --version
           ./builds/drenv --help > /dev/null
