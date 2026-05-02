@@ -1,9 +1,14 @@
 #!/bin/sh
 # drenv install script
 # Usage:
-#   curl -fsSL drenv.org/install.sh | bash
-#   or from GitHub:
-#   curl -fsSL https://raw.githubusercontent.com/Nitemaeric/drenv/main/website/install.sh | bash
+#   macOS / Linux:
+#     curl -fsSL drenv.org/install.sh | bash
+#
+#   Windows (PowerShell):
+#     irm https://drenv.org/install.ps1 | iex
+#
+#   or directly from GitHub (raw):
+#     curl -fsSL https://raw.githubusercontent.com/Nitemaeric/drenv/main/install.sh | bash
 #
 # This script downloads the latest drenv release for your platform,
 # installs it to ~/.drenv/bin, and prints instructions to add it to your PATH.

@@ -1,13 +1,29 @@
 import { useSignal } from "@preact/signals";
-
-const INSTALL_COMMAND = 'curl -fsSL drenv.org/install.sh | bash';
+import { useEffect } from "preact/hooks";
 
 export default function Home() {
   const copied = useSignal(false);
+  const installCommand = useSignal('curl -fsSL drenv.org/install.sh | bash');
+  const osLabel = useSignal('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const ua = navigator.userAgent || '';
+      const platform = navigator.platform || '';
+      const isWindows = /windows/i.test(ua) || /win/i.test(platform);
+
+      if (isWindows) {
+        installCommand.value = 'irm https://drenv.org/install.ps1 | iex';
+        osLabel.value = 'Windows (PowerShell)';
+      } else {
+        osLabel.value = 'macOS / Linux';
+      }
+    }
+  }, []);
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(INSTALL_COMMAND);
+      await navigator.clipboard.writeText(installCommand.value);
       copied.value = true;
       setTimeout(() => {
         copied.value = false;
@@ -27,12 +43,12 @@ export default function Home() {
         {/* Centered Hero Content */}
         <div class="relative z-10 flex-1 flex items-center justify-center px-6">
           <div class="max-w-2xl text-center">
-            {/* Official DragonRuby Logo (to show what drenv is for) */}
-            <div class="flex justify-center mb-5">
+            {/* DragonRuby logo */}
+            <div class="flex justify-center mb-6">
               <img 
-                src="https://dragonruby.org/assets/logo-e7ffdf25e7e410056429e9378cdc22a931780525e1b9411478d17c86509a2a22.png" 
+                src="/icon.png" 
                 alt="DragonRuby" 
-                class="h-9 w-auto opacity-90" 
+                class="h-[64px] w-[64px] opacity-90" 
               />
             </div>
 
@@ -46,10 +62,15 @@ export default function Home() {
 
             {/* Prominent Install Command */}
             <div class="mt-6 mx-auto max-w-xl">
+              {osLabel.value && (
+                <div class="mb-1.5 text-xs tracking-[1px] text-white/50 pl-1">
+                  {osLabel.value}
+                </div>
+              )}
               <div class="group relative rounded-xl bg-zinc-900 border border-white/10 p-1 shadow-2xl">
                 <div class="flex items-center justify-between px-5 py-4 font-mono text-sm bg-black/60 rounded-[10px]">
                   <code class="select-all text-rose-400 pr-4">
-                    {INSTALL_COMMAND}
+                    {installCommand.value}
                   </code>
                   <button
                     onClick={copyToClipboard}
