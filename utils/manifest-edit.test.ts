@@ -17,33 +17,43 @@ import {
 } from "./manifest-edit.ts";
 
 describe("parseSource", () => {
-  it("parses a github source with a tag shorthand", () => {
+  it("honors explicit kind:value prefixes", () => {
     assertEquals(parseSource("github:guitsaru/draco@v0.7.0"), {
       kind: "github",
       value: "guitsaru/draco",
       tag: "v0.7.0",
     });
-  });
-
-  it("leaves @ intact for git, url, and path sources", () => {
     assertEquals(
       parseSource("git:https://gitlab.com/me/x.git").value,
       "https://gitlab.com/me/x.git",
     );
-    assertEquals(
-      parseSource("url:https://example.com/a.rb").value,
-      "https://example.com/a.rb",
-    );
     assertEquals(parseSource("path:../local_lib").value, "../local_lib");
   });
 
-  it("throws on a missing separator or unknown kind", () => {
-    assertThrows(() => parseSource("guitsaru/draco"), InvalidManifest);
-    assertThrows(
-      () => parseSource("svn:whatever"),
-      InvalidManifest,
-      "unknown source kind",
-    );
+  it("infers path from filesystem-style sources", () => {
+    assertEquals(parseSource("../lib").kind, "path");
+    assertEquals(parseSource("./foo/bar.rb").kind, "path");
+    assertEquals(parseSource("/abs/lib").kind, "path");
+  });
+
+  it("infers github from owner/repo, with an optional tag", () => {
+    assertEquals(parseSource("guitsaru/draco"), {
+      kind: "github",
+      value: "guitsaru/draco",
+      tag: undefined,
+    });
+    assertEquals(parseSource("guitsaru/draco@v0.7.0").tag, "v0.7.0");
+  });
+
+  it("infers url and git from URLs", () => {
+    assertEquals(parseSource("https://example.com/a.rb").kind, "url");
+    assertEquals(parseSource("https://gitlab.com/me/x.git").kind, "git");
+    assertEquals(parseSource("git@github.com:me/x.git").kind, "git");
+  });
+
+  it("throws on an unparseable source", () => {
+    assertThrows(() => parseSource("lib"), InvalidManifest);
+    assertThrows(() => parseSource("svn:whatever"), InvalidManifest);
   });
 });
 

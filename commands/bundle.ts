@@ -1,11 +1,19 @@
+import { exists } from "@std/fs";
+
 import { findProject } from "../utils/project.ts";
 import { bundle as runBundle, reconcile } from "../utils/bundler.ts";
 import { BUNDLE_REQUIRE } from "../utils/bundle-file.ts";
 
 export default async function bundle(options: { frozen?: boolean } = {}) {
   const project = await findProject();
-  const log = (message: string) => console.log(message);
 
+  if (!await exists(project.manifestPath)) {
+    throw new Error(
+      "drenv: no mygame/drenv.toml — add a dependency with `drenv add <source>`",
+    );
+  }
+
+  const log = (message: string) => console.log(message);
   const { lock, needsRequireLine } = options.frozen
     ? await reconcile(project, { log, frozen: true })
     : await runBundle(project, { log });

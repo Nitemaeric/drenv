@@ -6,7 +6,7 @@ import { reconcile } from "../utils/bundler.ts";
 import { BUNDLE_REQUIRE } from "../utils/bundle-file.ts";
 
 export default async function publish(forwarded: string[] = []) {
-  const project = await findProject(Deno.cwd(), { requireManifest: false });
+  const project = await findProject();
 
   // Verify dependencies against the lockfile and vendor them into the package.
   // Frozen so a publish always ships exactly what's locked.

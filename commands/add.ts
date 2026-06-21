@@ -1,3 +1,5 @@
+import { basename, dirname, relative, resolve } from "@std/path";
+
 import { findProject } from "../utils/project.ts";
 import { bundle } from "../utils/bundler.ts";
 import { BUNDLE_REQUIRE } from "../utils/bundle-file.ts";
@@ -18,26 +20,56 @@ type AddOptions = {
 
 export default async function add(source: string, options: AddOptions = {}) {
   const parsed = parseSource(source);
-  const name = options.name ?? deriveName(parsed);
+  const project = await findProject();
+
+  let value = parsed.value;
+  let entrypoint = options.entrypoint;
+  let name = options.name;
+
+  if (parsed.kind === "path") {
+    // The path is typed relative to the shell, but stored relative to the
+    // manifest (mygame/). If it points at a file, treat that as the entrypoint.
+    const absolute = resolve(Deno.cwd(), value);
+
+    let info: Deno.FileInfo;
+    try {
+      info = await Deno.stat(absolute);
+    } catch {
+      throw new Error(
+        `drenv: path '${parsed.value}' not found (resolved to ${absolute})`,
+      );
+    }
+
+    let directory = absolute;
+    if (info.isFile) {
+      directory = dirname(absolute);
+      entrypoint ??= basename(absolute);
+      name ??= basename(absolute).replace(/\.[^.]+$/, "");
+    }
+
+    value = relative(project.mygame, directory) || ".";
+  }
+
+  name ??= deriveName({ kind: parsed.kind, value });
 
   const dep: DependencySpec = {
     name,
-    entrypoint: options.entrypoint,
+    entrypoint,
     tag: options.tag ?? parsed.tag,
     branch: options.branch,
     ref: options.ref,
   };
-  dep[parsed.kind] = parsed.value;
+  dep[parsed.kind] = value;
 
   if (parsed.kind !== "url" && !dep.entrypoint) {
     throw new Error(
-      `drenv: ${parsed.kind} dependencies need an entrypoint (pass -e <file>)`,
+      `drenv: ${parsed.kind} dependencies need an entrypoint — pass \`-e <file>\`` +
+        (parsed.kind === "path"
+          ? " or point at the entry file (e.g. drenv add ../lib/conjuration.rb)"
+          : ""),
     );
   }
 
-  const project = await findProject(Deno.cwd(), { requireManifest: false });
-
-  // Guard against duplicates before touching the manifest.
   const existing = await readManifest(project.manifestPath).catch(() => null);
   if (existing?.dependencies.some((d) => d.name === name)) {
     throw new Error(
