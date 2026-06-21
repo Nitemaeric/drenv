@@ -133,7 +133,8 @@ entrypoint = "lib/local_lib.rb"
 ```
 
 Each dependency declares exactly one source — `github`, `url`, `git`, or `path`
-— plus the `entrypoint` to load. Then add a single line to the top of
+— plus the `entrypoint` to load. You can edit `drenv.toml` by hand or manage it
+with `drenv add` / `drenv remove`. Either way, add a single line to the top of
 `mygame/app/main.rb`:
 
 ```ruby
@@ -143,12 +144,35 @@ require 'app/drenv_bundle.rb'
 Commit `drenv.toml` and `drenv.lock`, and add `mygame/vendor/` to your
 `.gitignore`.
 
+### `drenv add <source>`
+
+Adds a dependency to `mygame/drenv.toml` and vendors it. The source is
+`kind:value`:
+
+```sh
+drenv add github:guitsaru/draco@v0.7.0 -e draco.rb
+drenv add git:https://gitlab.com/me/my_engine.git --branch main -e lib/my_engine.rb
+drenv add url:https://example.com/scene_manager.rb
+drenv add path:../local_lib -e lib/local_lib.rb
+```
+
+Pass `-e, --entrypoint` for the file to require (defaulted from the filename for
+`url:` sources), `-n, --name` to override the derived name, and
+`--tag`/`--branch`/`--ref` to pin a `github`/`git` revision.
+
+### `drenv remove <name>`
+
+Removes a dependency from `mygame/drenv.toml`, deletes its vendored copy, and
+updates the lock.
+
 ### `drenv bundle`
 
 Resolves every dependency in `mygame/drenv.toml`, vendors it into
 `mygame/vendor/`, and writes `mygame/drenv.lock` and
 `mygame/app/drenv_bundle.rb`. `drenv run` does this for you before launching;
-run it directly when you only want to refresh dependencies.
+run it directly when you only want to refresh dependencies. Pass `--frozen`
+(also valid on `drenv run`) to verify against the lockfile without updating it —
+handy in CI.
 
 ## Managing drenv
 
