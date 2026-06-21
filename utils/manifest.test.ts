@@ -46,6 +46,20 @@ entrypoint = "lib/local_lib.rb"
       "multiple sources",
     );
   });
+
+  it("parses a [package] declaration", () => {
+    const manifest = parseManifest(
+      '[package]\nroot = "lib"\nentrypoint = "conjuration.rb"\n',
+    );
+    assertEquals(manifest.package, {
+      root: "lib",
+      entrypoint: "conjuration.rb",
+    });
+  });
+
+  it("has no package when none is declared", () => {
+    assertEquals(parseManifest("").package, undefined);
+  });
 });
 
 describe("sourceKind", () => {

@@ -8,6 +8,7 @@ import {
   addDependencyToManifest,
   deriveName,
   parseSource,
+  removeDependencyFromManifest,
 } from "../utils/manifest-edit.ts";
 
 type AddOptions = {
@@ -61,14 +62,8 @@ export default async function add(source: string, options: AddOptions = {}) {
   };
   dep[parsed.kind] = value;
 
-  if (parsed.kind !== "url" && !dep.entrypoint) {
-    throw new Error(
-      `drenv: ${parsed.kind} dependencies need an entrypoint — pass \`-e <file>\`` +
-        (parsed.kind === "path"
-          ? " or point at the entry file (e.g. drenv add ../lib/conjuration.rb)"
-          : ""),
-    );
-  }
+  // Entrypoint is optional: github/git/path deps without one are resolved from
+  // the library's [package] declaration or by convention when vendoring.
 
   const existing = await readManifest(project.manifestPath).catch(() => null);
   if (existing?.dependencies.some((d) => d.name === name)) {
@@ -79,9 +74,18 @@ export default async function add(source: string, options: AddOptions = {}) {
 
   await addDependencyToManifest(project.manifestPath, dep);
 
-  const { needsRequireLine } = await bundle(project, {
-    log: (message) => console.log(message),
-  });
+  let needsRequireLine: boolean;
+  try {
+    ({ needsRequireLine } = await bundle(project, {
+      log: (message) => console.log(message),
+    }));
+  } catch (error) {
+    // Roll the manifest back if resolution/vendoring failed, so a bad add
+    // doesn't leave a broken entry behind.
+    await removeDependencyFromManifest(project.manifestPath, name)
+      .catch(() => {});
+    throw error;
+  }
 
   console.log(`drenv: added ${name}`);
 

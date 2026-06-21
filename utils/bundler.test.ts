@@ -134,3 +134,68 @@ describe("bundler (path source)", () => {
     );
   });
 });
+
+describe("bundler (library-resolved entrypoint)", () => {
+  let tmp: string;
+  let project: Project;
+
+  beforeEach(async () => {
+    tmp = await Deno.makeTempDir({ prefix: "drenv-resolve-bundle-" });
+
+    // A library "repo" with code under lib/ and unrelated junk at the root.
+    await ensureDir(join(tmp, "repo", "lib", "mylib"));
+    await Deno.writeTextFile(
+      join(tmp, "repo", "lib", "mylib.rb"),
+      'require_relative "mylib/helper"\n',
+    );
+    await Deno.writeTextFile(
+      join(tmp, "repo", "lib", "mylib", "helper.rb"),
+      "class Helper; end\n",
+    );
+    await Deno.writeTextFile(
+      join(tmp, "repo", "README.md"),
+      "# not vendored\n",
+    );
+
+    const mygame = join(tmp, "game", "mygame");
+    await ensureDir(join(mygame, "app"));
+    // No entrypoint — resolved by convention (lib/<name>.rb).
+    await Deno.writeTextFile(
+      join(mygame, "drenv.toml"),
+      '[dependencies.mylib]\npath = "../../repo"\n',
+    );
+    await Deno.writeTextFile(
+      join(mygame, "app", "main.rb"),
+      "def tick args\nend\n",
+    );
+
+    project = {
+      root: join(tmp, "game"),
+      mygame,
+      manifestPath: join(mygame, "drenv.toml"),
+      lockPath: join(mygame, "drenv.lock"),
+    };
+  });
+
+  afterEach(async () => {
+    await Deno.remove(tmp, { recursive: true });
+  });
+
+  it("resolves the entrypoint by convention and vendors only lib/", async () => {
+    const { lock } = await bundle(project);
+
+    // lib/ contents land at the vendor root...
+    assert(await exists(join(project.mygame, "vendor", "mylib", "mylib.rb")));
+    assert(
+      await exists(
+        join(project.mygame, "vendor", "mylib", "mylib", "helper.rb"),
+      ),
+    );
+    // ...and the repo's junk does not.
+    assertFalse(
+      await exists(join(project.mygame, "vendor", "mylib", "README.md")),
+    );
+
+    assertEquals(lock.dependencies[0].require, ["vendor/mylib/mylib.rb"]);
+  });
+});

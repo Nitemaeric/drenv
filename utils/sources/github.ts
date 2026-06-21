@@ -1,16 +1,11 @@
-import { ensureDir, exists } from "@std/fs";
+import { ensureDir } from "@std/fs";
 import { dirname, join } from "@std/path";
 import { configure, ZipReaderStream } from "@zip-js/zip-js";
 
 import type { DependencySpec } from "../manifest.ts";
 import type { LockedDependency } from "../lockfile.ts";
 import { treeDigest } from "../integrity.ts";
-import {
-  requireEntrypoint,
-  type VendorContext,
-  vendorDir,
-  vendorRequire,
-} from "./mod.ts";
+import { stageIntoVendor, type VendorContext, vendorDir } from "./resolve.ts";
 
 configure({ useWebWorkers: false });
 
@@ -35,7 +30,6 @@ export const vendorGithub = async (
   spec: DependencySpec,
   ctx: VendorContext,
 ): Promise<LockedDependency> => {
-  const entrypoint = requireEntrypoint(spec);
   const [owner, repo] = spec.github!.split("/");
 
   if (!owner || !repo) {
@@ -56,36 +50,42 @@ export const vendorGithub = async (
     );
   }
 
-  const dest = vendorDir(ctx, spec.name);
-  await Deno.remove(dest, { recursive: true }).catch(() => {});
+  const staging = await Deno.makeTempDir({ prefix: "drenv-gh-" });
 
-  for await (const entry of response.body.pipeThrough(new ZipReaderStream())) {
-    if (entry.directory) continue;
+  try {
+    for await (
+      const entry of response.body.pipeThrough(new ZipReaderStream())
+    ) {
+      if (entry.directory) continue;
 
-    // GitHub archives nest everything under a `<repo>-<ref>/` directory.
-    const inner = entry.filename.split("/").slice(1).join("/");
-    if (!inner || inner.endsWith(".DS_Store")) continue;
+      // GitHub archives nest everything under a `<repo>-<ref>/` directory.
+      const inner = entry.filename.split("/").slice(1).join("/");
+      if (!inner || inner.endsWith(".DS_Store")) continue;
 
-    const target = join(dest, inner);
-    await ensureDir(dirname(target));
-    await entry.readable?.pipeTo((await Deno.create(target)).writable);
-  }
+      const target = join(staging, inner);
+      await ensureDir(dirname(target));
+      await entry.readable?.pipeTo((await Deno.create(target)).writable);
+    }
 
-  if (!await exists(join(dest, entrypoint))) {
-    throw new Error(
-      `drenv: entrypoint '${entrypoint}' not found in dependency '${spec.name}'`,
+    const require = await stageIntoVendor(
+      staging,
+      ctx,
+      spec.name,
+      spec.entrypoint,
     );
+
+    ctx.log(
+      `drenv: vendored ${spec.name} (github:${spec.github}@${downloadRef})`,
+    );
+
+    return {
+      name: spec.name,
+      source: `github:${spec.github}`,
+      ref: sha ?? downloadRef,
+      require: [require],
+      integrity: await treeDigest(vendorDir(ctx, spec.name)),
+    };
+  } finally {
+    await Deno.remove(staging, { recursive: true }).catch(() => {});
   }
-
-  ctx.log(
-    `drenv: vendored ${spec.name} (github:${spec.github}@${downloadRef})`,
-  );
-
-  return {
-    name: spec.name,
-    source: `github:${spec.github}`,
-    ref: sha ?? downloadRef,
-    require: [vendorRequire(spec.name, entrypoint)],
-    integrity: await treeDigest(dest),
-  };
 };
