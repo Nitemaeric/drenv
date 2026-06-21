@@ -17,29 +17,24 @@ export type ParsedSource = {
   tag?: string;
 };
 
-/** Parses a `kind:value` source spec, e.g. `github:owner/repo@v1.0`. */
-export const parseSource = (spec: string): ParsedSource => {
-  const separator = spec.indexOf(":");
-  if (separator === -1) {
-    throw new InvalidManifest(
-      `invalid source '${spec}' (expected one of ${
-        SOURCE_KINDS.map((k) => `${k}:…`).join(", ")
-      })`,
-    );
-  }
+/** Infers a source kind from an unprefixed spec. */
+const inferKind = (spec: string): SourceKind | undefined => {
+  if (/^[./]/.test(spec)) return "path";
+  if (/^https?:\/\//.test(spec)) return spec.endsWith(".git") ? "git" : "url";
+  if (/^git@/.test(spec) || spec.endsWith(".git")) return "git";
+  if (/^[\w.-]+\/[\w.-]+(@[\w.-]+)?$/.test(spec)) return "github";
+  return undefined;
+};
 
-  const kind = spec.slice(0, separator) as SourceKind;
-  if (!SOURCE_KINDS.includes(kind)) {
-    throw new InvalidManifest(
-      `unknown source kind '${kind}' (expected ${SOURCE_KINDS.join(", ")})`,
-    );
-  }
-
-  let value = spec.slice(separator + 1);
+const withTag = (
+  kind: SourceKind,
+  value: string,
+  spec: string,
+): ParsedSource => {
   let tag: string | undefined;
 
-  // `github:owner/repo@tag` shorthand — only github, since git/url/path values
-  // can legitimately contain `@`.
+  // `owner/repo@tag` shorthand — github only, since git/url/path values can
+  // legitimately contain `@`.
   if (kind === "github") {
     const at = value.lastIndexOf("@");
     if (at > 0) {
@@ -53,6 +48,31 @@ export const parseSource = (spec: string): ParsedSource => {
   }
 
   return { kind, value, tag };
+};
+
+/**
+ * Parses a source spec into a kind and value. An explicit `kind:value` prefix
+ * wins; otherwise the kind is inferred — `../lib` and `/abs` are paths,
+ * `owner/repo[@tag]` is github, and `http(s)://…`/`git@…`/`*.git` are url/git.
+ */
+export const parseSource = (spec: string): ParsedSource => {
+  const separator = spec.indexOf(":");
+
+  if (separator !== -1) {
+    const prefix = spec.slice(0, separator);
+    if (SOURCE_KINDS.includes(prefix as SourceKind)) {
+      return withTag(prefix as SourceKind, spec.slice(separator + 1), spec);
+    }
+  }
+
+  const kind = inferKind(spec);
+  if (!kind) {
+    throw new InvalidManifest(
+      `invalid source '${spec}' (use a path like ../lib, owner/repo, a URL, or an explicit github:/git:/url:/path: prefix)`,
+    );
+  }
+
+  return withTag(kind, spec, spec);
 };
 
 /** Derives a default dependency name from a parsed source. */

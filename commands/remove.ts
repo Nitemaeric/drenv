@@ -1,3 +1,4 @@
+import { exists } from "@std/fs";
 import { join } from "@std/path";
 
 import { findProject } from "../utils/project.ts";
@@ -8,6 +9,10 @@ import { writeBundleFile } from "../utils/bundle-file.ts";
 
 export default async function remove(name: string) {
   const project = await findProject();
+
+  if (!await exists(project.manifestPath)) {
+    throw new Error("drenv: no mygame/drenv.toml — nothing to remove");
+  }
 
   // Throws if the dependency isn't present.
   await removeDependencyFromManifest(project.manifestPath, name);

@@ -11,15 +11,18 @@ export default async function run(
 ) {
   const project = await findProject();
 
-  const { lock, needsRequireLine } = await reconcile(project, {
-    log: (message) => console.log(message),
-    frozen: options.frozen,
-  });
+  // Sync dependencies when this project declares any; otherwise just launch.
+  if (await exists(project.manifestPath)) {
+    const { lock, needsRequireLine } = await reconcile(project, {
+      log: (message) => console.log(message),
+      frozen: options.frozen,
+    });
 
-  if (needsRequireLine && lock.dependencies.length > 0) {
-    console.log(
-      `drenv: warning — mygame/app/main.rb does not require the bundle.\n  Add: ${BUNDLE_REQUIRE}`,
-    );
+    if (needsRequireLine && lock.dependencies.length > 0) {
+      console.log(
+        `drenv: warning — mygame/app/main.rb does not require the bundle.\n  Add: ${BUNDLE_REQUIRE}`,
+      );
+    }
   }
 
   const binary = join(

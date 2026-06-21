@@ -1,4 +1,3 @@
-import { exists } from "@std/fs";
 import { basename, dirname, join, resolve } from "@std/path";
 
 export type Project = {
@@ -38,34 +37,22 @@ const isDirectory = async (path: string): Promise<boolean> => {
 };
 
 /**
- * Walks up from `start` looking for a project. By default a project root is a
- * directory containing `mygame/drenv.toml`; with `requireManifest: false` (used
- * by `drenv add`, which creates the manifest) any directory containing a
- * `mygame/` directory qualifies. When `start` is inside `mygame` itself, its
- * parent is used.
+ * Walks up from `start` to find a DragonRuby project — a directory containing a
+ * `mygame/` directory. When `start` is inside `mygame` itself, its parent is
+ * used. The `drenv.toml` manifest is optional; commands that need it check for
+ * it themselves.
  */
 export const findProject = async (
   start: string = Deno.cwd(),
-  options: { requireManifest?: boolean } = {},
 ): Promise<Project> => {
-  const requireManifest = options.requireManifest ?? true;
   let dir = resolve(start);
 
   while (true) {
-    if (requireManifest) {
-      if (await exists(join(dir, "mygame", "drenv.toml"))) {
-        return project(dir);
-      }
-      if (basename(dir) === "mygame" && await exists(join(dir, "drenv.toml"))) {
-        return project(dirname(dir));
-      }
-    } else {
-      if (await isDirectory(join(dir, "mygame"))) {
-        return project(dir);
-      }
-      if (basename(dir) === "mygame") {
-        return project(dirname(dir));
-      }
+    if (await isDirectory(join(dir, "mygame"))) {
+      return project(dir);
+    }
+    if (basename(dir) === "mygame") {
+      return project(dirname(dir));
     }
 
     const parent = dirname(dir);

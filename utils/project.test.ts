@@ -10,8 +10,8 @@ describe("findProject", () => {
 
   beforeEach(async () => {
     tmp = await Deno.makeTempDir({ prefix: "drenv-proj-" });
+    // A project is discovered by its mygame/ directory — no manifest required.
     await ensureDir(join(tmp, "game", "mygame", "app"));
-    await Deno.writeTextFile(join(tmp, "game", "mygame", "drenv.toml"), "");
   });
 
   afterEach(async () => {
