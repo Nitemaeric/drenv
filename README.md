@@ -174,6 +174,13 @@ run it directly when you only want to refresh dependencies. Pass `--frozen`
 (also valid on `drenv run`) to verify against the lockfile without updating it —
 handy in CI.
 
+### `drenv publish [args...]`
+
+Verifies dependencies against the lockfile (like `--frozen`), then runs
+`dragonruby-publish` on `mygame`, forwarding any arguments. So
+`drenv publish --package` packages locally and `drenv publish` publishes to
+itch.io — always shipping exactly what's locked.
+
 ## Managing drenv
 
 ### `drenv setup`

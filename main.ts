@@ -10,6 +10,7 @@ import global from "./commands/global.ts";
 import install from "./commands/install.ts";
 import update from "./commands/update.ts";
 import newCommand from "./commands/new.ts";
+import publish from "./commands/publish.ts";
 import register from "./commands/register.ts";
 import remove from "./commands/remove.ts";
 import run from "./commands/run.ts";
@@ -94,6 +95,7 @@ program
   .command("run")
   .argument("[args...]", "Arguments forwarded to the dragonruby binary")
   .option("--frozen", "Verify against the lockfile instead of updating it")
+  .allowUnknownOption()
   .description("Sync dependencies and launch the project with DragonRuby")
   .action(actionRunner(run, { skipUpdateCheck: true }));
 
@@ -122,6 +124,15 @@ program
   .argument("<name>", "Name of the dependency to remove")
   .description("Remove a dependency from mygame/drenv.toml")
   .action(actionRunner(remove));
+
+program
+  .command("publish")
+  .argument("[args...]", "Arguments forwarded to dragonruby-publish")
+  .allowUnknownOption()
+  .description(
+    "Verify dependencies against the lockfile, then publish with dragonruby-publish",
+  )
+  .action(actionRunner(publish, { skipUpdateCheck: true }));
 
 program
   .command("global")
