@@ -117,25 +117,24 @@ matching `require` lines.
 
 ```toml
 # mygame/drenv.toml
+[dependencies.conjuration]
+github = "Nitemaeric/conjuration"   # entrypoint resolved from the library
+
 [dependencies.draco]
 github = "guitsaru/draco"
 tag = "v0.7.0"
-entrypoint = "draco.rb"
-
-[dependencies.my_engine]
-git = "https://gitlab.com/me/my_engine.git"
-branch = "main"
-entrypoint = "lib/my_engine.rb"
+entrypoint = "draco.rb"             # ...or pin it explicitly
 
 [dependencies.local_lib]
 path = "../local_lib"
-entrypoint = "lib/local_lib.rb"
 ```
 
-Each dependency declares exactly one source — `github`, `url`, `git`, or `path`
-— plus the `entrypoint` to load. You can edit `drenv.toml` by hand or manage it
-with `drenv add` / `drenv remove`. Either way, add a single line to the top of
-`mygame/app/main.rb`:
+Each dependency declares exactly one source — `github`, `url`, `git`, or `path`.
+The `entrypoint` is optional: drenv resolves it from the library's own
+[`[package]`](#publishing-a-library) declaration, or by convention
+(`lib/<name>.rb`, then `<name>.rb`). You can edit `drenv.toml` by hand or manage
+it with `drenv add` / `drenv remove`. Either way, add a single line to the top
+of `mygame/app/main.rb`:
 
 ```ruby
 require 'app/drenv_bundle.rb'
@@ -150,14 +149,14 @@ Adds a dependency to `mygame/drenv.toml` and vendors it. The source is
 `kind:value`:
 
 ```sh
-drenv add github:guitsaru/draco@v0.7.0 -e draco.rb
-drenv add git:https://gitlab.com/me/my_engine.git --branch main -e lib/my_engine.rb
-drenv add url:https://example.com/scene_manager.rb
-drenv add path:../local_lib -e lib/local_lib.rb
+drenv add github:Nitemaeric/conjuration        # entrypoint resolved for you
+drenv add github:guitsaru/draco@v0.7.0
+drenv add git:https://gitlab.com/me/my_engine.git --branch main
+drenv add path:../local_lib
 ```
 
-Pass `-e, --entrypoint` for the file to require (defaulted from the filename for
-`url:` sources), `-n, --name` to override the derived name, and
+Pass `-e, --entrypoint` only when the library doesn't declare or follow a
+conventional entrypoint, `-n, --name` to override the derived name, and
 `--tag`/`--branch`/`--ref` to pin a `github`/`git` revision.
 
 ### `drenv remove <name>`
@@ -180,6 +179,21 @@ Verifies dependencies against the lockfile (like `--frozen`), then runs
 `dragonruby-publish` on `mygame`, forwarding any arguments. So
 `drenv publish --package` packages locally and `drenv publish` publishes to
 itch.io — always shipping exactly what's locked.
+
+### Publishing a library
+
+If you maintain a DragonRuby library, add a `[package]` section to a
+`drenv.toml` at your repo root so consumers can `drenv add` it with no extra
+flags:
+
+```toml
+[package]
+root = "lib"                  # only this directory is vendored (default ".")
+entrypoint = "conjuration.rb" # the file to require, relative to root
+```
+
+Without it, drenv falls back to convention — `lib/<name>.rb`, then `<name>.rb` —
+so many libraries (a `lib/<name>.rb` layout) work with zero configuration.
 
 ## Managing drenv
 

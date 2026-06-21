@@ -16,8 +16,17 @@ export type DependencySpec = {
   ref?: string;
 };
 
+/** A library's self-description, declared in its own `[package]` table. */
+export type PackageSpec = {
+  /** Subdirectory of the source that holds the library (default "."). */
+  root?: string;
+  /** Entrypoint to require, relative to `root`. */
+  entrypoint?: string;
+};
+
 export type Manifest = {
   dependencies: DependencySpec[];
+  package?: PackageSpec;
 };
 
 export class InvalidManifest extends Error {
@@ -53,6 +62,7 @@ export const sourceKind = (spec: DependencySpec): SourceKind => {
 export const parseManifest = (text: string): Manifest => {
   const data = parse(text) as {
     dependencies?: Record<string, Record<string, unknown>>;
+    package?: PackageSpec;
   };
 
   const dependencies = Object.entries(data.dependencies ?? {}).map(
@@ -64,7 +74,7 @@ export const parseManifest = (text: string): Manifest => {
     sourceKind(spec);
   }
 
-  return { dependencies };
+  return { dependencies, package: data.package };
 };
 
 export const readManifest = async (path: string): Promise<Manifest> => {

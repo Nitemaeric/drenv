@@ -1,16 +1,7 @@
-import { exists } from "@std/fs";
-import { join } from "@std/path";
-
 import type { DependencySpec } from "../manifest.ts";
 import type { LockedDependency } from "../lockfile.ts";
-import { copyTree } from "../copy-tree.ts";
 import { treeDigest } from "../integrity.ts";
-import {
-  requireEntrypoint,
-  type VendorContext,
-  vendorDir,
-  vendorRequire,
-} from "./mod.ts";
+import { stageIntoVendor, type VendorContext, vendorDir } from "./resolve.ts";
 
 const git = async (
   args: string[],
@@ -39,7 +30,6 @@ export const vendorGit = async (
   spec: DependencySpec,
   ctx: VendorContext,
 ): Promise<LockedDependency> => {
-  const entrypoint = requireEntrypoint(spec);
   const url = spec.git!;
   const named = spec.tag ?? spec.branch;
 
@@ -82,15 +72,7 @@ export const vendorGit = async (
 
     const { stdout: sha } = await git(["-C", tmp, "rev-parse", "HEAD"]);
 
-    const dest = vendorDir(ctx, spec.name);
-    await Deno.remove(dest, { recursive: true }).catch(() => {});
-    await copyTree(tmp, dest);
-
-    if (!await exists(join(dest, entrypoint))) {
-      throw new Error(
-        `drenv: entrypoint '${entrypoint}' not found in dependency '${spec.name}'`,
-      );
-    }
+    const require = await stageIntoVendor(tmp, ctx, spec.name, spec.entrypoint);
 
     ctx.log(`drenv: vendored ${spec.name} (git:${url})`);
 
@@ -98,8 +80,8 @@ export const vendorGit = async (
       name: spec.name,
       source: `git:${url}`,
       ref: sha || undefined,
-      require: [vendorRequire(spec.name, entrypoint)],
-      integrity: await treeDigest(dest),
+      require: [require],
+      integrity: await treeDigest(vendorDir(ctx, spec.name)),
     };
   } finally {
     await Deno.remove(tmp, { recursive: true }).catch(() => {});

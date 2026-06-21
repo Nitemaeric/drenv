@@ -4,7 +4,7 @@ import { basename, dirname, join } from "@std/path";
 import type { DependencySpec } from "../manifest.ts";
 import type { LockedDependency } from "../lockfile.ts";
 import { treeDigest } from "../integrity.ts";
-import { type VendorContext, vendorDir, vendorRequire } from "./mod.ts";
+import { type VendorContext, vendorDir, vendorRequire } from "./resolve.ts";
 
 export const vendorUrl = async (
   spec: DependencySpec,
