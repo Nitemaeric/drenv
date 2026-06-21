@@ -1,7 +1,9 @@
 import { ensureDir, walk } from "@std/fs";
 import { dirname, join, relative } from "@std/path";
 
-const SKIP = [/(^|\/)\.DS_Store$/, /(^|\/)\.git(\/|$)/];
+// Match either path separator so the skips also work on Windows, where
+// `walk()` yields backslash-separated paths.
+const SKIP = [/(^|[\\/])\.DS_Store$/, /(^|[\\/])\.git([\\/]|$)/];
 
 /**
  * Copies the contents of `src` into `dest`, skipping `.DS_Store` and `.git`.
