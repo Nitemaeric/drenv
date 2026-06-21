@@ -11,7 +11,9 @@ export type Project = {
 
 export class ProjectNotFound extends Error {
   constructor() {
-    super("drenv: no mygame/drenv.toml found in this directory or any parent");
+    super(
+      "drenv: no DragonRuby project (mygame/) found in this directory or any parent",
+    );
     this.name = "ProjectNotFound";
   }
 }
@@ -27,23 +29,43 @@ const project = (root: string): Project => {
   };
 };
 
+const isDirectory = async (path: string): Promise<boolean> => {
+  try {
+    return (await Deno.stat(path)).isDirectory;
+  } catch {
+    return false;
+  }
+};
+
 /**
- * Walks up from `start` looking for a project. A project root is a directory
- * containing `mygame/drenv.toml`; when `start` is inside the `mygame` directory
- * itself, its parent is used.
+ * Walks up from `start` looking for a project. By default a project root is a
+ * directory containing `mygame/drenv.toml`; with `requireManifest: false` (used
+ * by `drenv add`, which creates the manifest) any directory containing a
+ * `mygame/` directory qualifies. When `start` is inside `mygame` itself, its
+ * parent is used.
  */
 export const findProject = async (
   start: string = Deno.cwd(),
+  options: { requireManifest?: boolean } = {},
 ): Promise<Project> => {
+  const requireManifest = options.requireManifest ?? true;
   let dir = resolve(start);
 
   while (true) {
-    if (await exists(join(dir, "mygame", "drenv.toml"))) {
-      return project(dir);
-    }
-
-    if (basename(dir) === "mygame" && await exists(join(dir, "drenv.toml"))) {
-      return project(dirname(dir));
+    if (requireManifest) {
+      if (await exists(join(dir, "mygame", "drenv.toml"))) {
+        return project(dir);
+      }
+      if (basename(dir) === "mygame" && await exists(join(dir, "drenv.toml"))) {
+        return project(dirname(dir));
+      }
+    } else {
+      if (await isDirectory(join(dir, "mygame"))) {
+        return project(dir);
+      }
+      if (basename(dir) === "mygame") {
+        return project(dirname(dir));
+      }
     }
 
     const parent = dirname(dir);

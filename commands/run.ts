@@ -5,14 +5,15 @@ import { findProject } from "../utils/project.ts";
 import { reconcile } from "../utils/bundler.ts";
 import { BUNDLE_REQUIRE } from "../utils/bundle-file.ts";
 
-export default async function run(...args: unknown[]) {
-  // Commander passes the variadic `[args...]` as a single array argument.
-  const forwarded = (args.find((arg) => Array.isArray(arg)) as string[]) ?? [];
-
+export default async function run(
+  forwarded: string[] = [],
+  options: { frozen?: boolean } = {},
+) {
   const project = await findProject();
 
   const { lock, needsRequireLine } = await reconcile(project, {
     log: (message) => console.log(message),
+    frozen: options.frozen,
   });
 
   if (needsRequireLine && lock.dependencies.length > 0) {

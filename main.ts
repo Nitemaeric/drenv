@@ -3,6 +3,7 @@ import { greaterThan, tryParse } from "@std/semver";
 
 import config from "./deno.json" with { type: "json" };
 
+import add from "./commands/add.ts";
 import bundle from "./commands/bundle.ts";
 import changelog from "./commands/changelog.ts";
 import global from "./commands/global.ts";
@@ -10,6 +11,7 @@ import install from "./commands/install.ts";
 import update from "./commands/update.ts";
 import newCommand from "./commands/new.ts";
 import register from "./commands/register.ts";
+import remove from "./commands/remove.ts";
 import run from "./commands/run.ts";
 import setup from "./commands/setup.ts";
 import upgrade from "./commands/upgrade.ts";
@@ -34,11 +36,14 @@ const printDrenvUpdateNotice = async () => {
   }
 };
 
+// deno-lint-ignore no-explicit-any
+type CommandAction = (...args: any[]) => Promise<unknown>;
+
 const actionRunner = (
-  fn: (...args: string[]) => Promise<unknown>,
+  fn: CommandAction,
   options: { skipUpdateCheck?: boolean } = {},
 ) => {
-  return async (...args: string[]): Promise<void> => {
+  return async (...args: unknown[]): Promise<void> => {
     try {
       const value = await fn(...args);
       if (typeof value === "string" || typeof value === "number") {
@@ -81,14 +86,42 @@ program
 
 program
   .command("bundle")
+  .option("--frozen", "Verify against the lockfile instead of updating it")
   .description("Resolve and vendor dependencies from mygame/drenv.toml")
   .action(actionRunner(bundle));
 
 program
   .command("run")
   .argument("[args...]", "Arguments forwarded to the dragonruby binary")
+  .option("--frozen", "Verify against the lockfile instead of updating it")
   .description("Sync dependencies and launch the project with DragonRuby")
   .action(actionRunner(run, { skipUpdateCheck: true }));
+
+program
+  .command("add")
+  .argument(
+    "<source>",
+    "Dependency source: github:owner/repo[@tag], git:<url>, url:<url>, path:<dir>",
+  )
+  .option(
+    "-e, --entrypoint <file>",
+    "File to require, relative to the dependency",
+  )
+  .option(
+    "-n, --name <name>",
+    "Dependency name (defaults to the repo/file name)",
+  )
+  .option("--tag <tag>", "Tag to pin (github/git)")
+  .option("--branch <branch>", "Branch to track (github/git)")
+  .option("--ref <ref>", "Commit or ref to pin (github/git)")
+  .description("Add a dependency to mygame/drenv.toml and vendor it")
+  .action(actionRunner(add));
+
+program
+  .command("remove")
+  .argument("<name>", "Name of the dependency to remove")
+  .description("Remove a dependency from mygame/drenv.toml")
+  .action(actionRunner(remove));
 
 program
   .command("global")

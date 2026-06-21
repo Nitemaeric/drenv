@@ -20,7 +20,7 @@ export type BundleResult = {
   needsRequireLine: boolean;
 };
 
-type Options = { log?: (message: string) => void };
+type Options = { log?: (message: string) => void; frozen?: boolean };
 
 const context = (
   project: Project,
@@ -62,16 +62,27 @@ export const bundle = async (
  * re-resolve: path deps are always re-synced (they are mutable), remote deps
  * are only re-fetched when missing or when their checksum no longer matches.
  * Falls back to a full {@link bundle} when the lock is missing or stale.
+ *
+ * With `frozen`, the lock is treated as authoritative: a missing/stale lock or
+ * a remote dependency whose fetched contents don't match the recorded checksum
+ * is an error rather than a re-resolve. Path deps are still synced from their
+ * (in-repo) source. Use it for reproducible CI installs.
  */
 export const reconcile = async (
   project: Project,
   options: Options = {},
 ): Promise<BundleResult> => {
   const log = options.log ?? (() => {});
+  const frozen = options.frozen ?? false;
   const lock = await readLock(project.lockPath);
   const digest = await fileDigest(project.manifestPath).catch(() => null);
 
   if (!lock || !digest || lock.manifest_digest !== digest) {
+    if (frozen) {
+      throw new Error(
+        "drenv: the lockfile is missing or out of date — run `drenv bundle`",
+      );
+    }
     return bundle(project, options);
   }
 
@@ -82,8 +93,16 @@ export const reconcile = async (
     const locked = lock.dependencies.find((dep) => dep.name === spec.name);
     const dir = join(project.mygame, "vendor", spec.name);
 
-    if (sourceKind(spec) === "path" || !await matches(dir, locked?.integrity)) {
+    if (sourceKind(spec) === "path") {
       await vendorDependency(spec, ctx);
+    } else if (!await matches(dir, locked?.integrity)) {
+      await vendorDependency(spec, ctx);
+
+      if (frozen && !await matches(dir, locked?.integrity)) {
+        throw new Error(
+          `drenv: dependency '${spec.name}' does not match the lockfile — run \`drenv bundle\``,
+        );
+      }
     }
   }
 
