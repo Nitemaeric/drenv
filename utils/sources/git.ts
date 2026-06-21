@@ -1,0 +1,107 @@
+import { exists } from "@std/fs";
+import { join } from "@std/path";
+
+import type { DependencySpec } from "../manifest.ts";
+import type { LockedDependency } from "../lockfile.ts";
+import { copyTree } from "../copy-tree.ts";
+import { treeDigest } from "../integrity.ts";
+import {
+  requireEntrypoint,
+  type VendorContext,
+  vendorDir,
+  vendorRequire,
+} from "./mod.ts";
+
+const git = async (
+  args: string[],
+): Promise<{ ok: boolean; stdout: string }> => {
+  let output: Deno.CommandOutput;
+
+  try {
+    output = await new Deno.Command("git", {
+      args,
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+  } catch {
+    throw new Error(
+      "drenv: git is required for git dependencies but was not found on PATH",
+    );
+  }
+
+  return {
+    ok: output.success,
+    stdout: new TextDecoder().decode(output.stdout).trim(),
+  };
+};
+
+export const vendorGit = async (
+  spec: DependencySpec,
+  ctx: VendorContext,
+): Promise<LockedDependency> => {
+  const entrypoint = requireEntrypoint(spec);
+  const url = spec.git!;
+  const named = spec.tag ?? spec.branch;
+
+  const tmp = await Deno.makeTempDir({ prefix: "drenv-git-" });
+
+  try {
+    if (named) {
+      const { ok } = await git([
+        "clone",
+        "--depth",
+        "1",
+        "--branch",
+        named,
+        url,
+        tmp,
+      ]);
+      if (!ok) {
+        throw new Error(
+          `drenv: failed to clone '${spec.name}' from ${url} (ref ${named})`,
+        );
+      }
+    } else if (spec.ref) {
+      // Arbitrary commits aren't fetchable with --depth 1, so clone in full.
+      const { ok } = await git(["clone", url, tmp]);
+      if (!ok) {
+        throw new Error(`drenv: failed to clone '${spec.name}' from ${url}`);
+      }
+      const { ok: checkedOut } = await git(["-C", tmp, "checkout", spec.ref]);
+      if (!checkedOut) {
+        throw new Error(
+          `drenv: failed to checkout '${spec.ref}' for '${spec.name}'`,
+        );
+      }
+    } else {
+      const { ok } = await git(["clone", "--depth", "1", url, tmp]);
+      if (!ok) {
+        throw new Error(`drenv: failed to clone '${spec.name}' from ${url}`);
+      }
+    }
+
+    const { stdout: sha } = await git(["-C", tmp, "rev-parse", "HEAD"]);
+
+    const dest = vendorDir(ctx, spec.name);
+    await Deno.remove(dest, { recursive: true }).catch(() => {});
+    await copyTree(tmp, dest);
+
+    if (!await exists(join(dest, entrypoint))) {
+      throw new Error(
+        `drenv: entrypoint '${entrypoint}' not found in dependency '${spec.name}'`,
+      );
+    }
+
+    ctx.log(`drenv: vendored ${spec.name} (git:${url})`);
+
+    return {
+      name: spec.name,
+      source: `git:${url}`,
+      ref: sha || undefined,
+      require: [vendorRequire(spec.name, entrypoint)],
+      integrity: await treeDigest(dest),
+    };
+  } finally {
+    await Deno.remove(tmp, { recursive: true }).catch(() => {});
+  }
+};
