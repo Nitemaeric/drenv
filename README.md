@@ -20,6 +20,7 @@ shell profile.
 
 > [!NOTE]
 > On macOS, if you see a Gatekeeper warning, run:
+>
 > ```sh
 > xattr -d com.apple.quarantine ./drenv
 > ```
@@ -41,13 +42,13 @@ deno compile -A --unstable-kv --output=builds/drenv --target=aarch64-apple-darwi
 drenv install
 ```
 
-This signs into your [itch.io](https://itch.io) account and downloads the
-latest version of DragonRuby GTK. Your credentials are stored as a revocable
-API key — never as a plaintext password.
+This signs into your [itch.io](https://itch.io) account and downloads the latest
+version of DragonRuby GTK. Your credentials are stored as a revocable API key —
+never as a plaintext password.
 
 > [!NOTE]
-> `drenv install` requires a DragonRuby GTK purchase on itch.io.
-> Only the standard tier is supported at this time.
+> `drenv install` requires a DragonRuby GTK purchase on itch.io. Only the
+> standard tier is supported at this time.
 
 ### 2. Set a global version
 
@@ -102,14 +103,52 @@ directory.
 Updates the current directory's DragonRuby version, preserving the `mygame`
 directory.
 
-### `drenv add <recipe>`
+### `drenv run [args...]`
 
-Installs a pre-configured library into your project.
+Syncs the current project's dependencies and launches it with DragonRuby. Any
+extra arguments are forwarded to the `dragonruby` binary.
 
-Available recipes:
+## Managing Dependencies
 
-- [foodchain](https://github.com/pvande/foodchain) - a single-file dependency
-  manager for DragonRuby games.
+drenv vendors dependencies into your game, bundler-style. Declare them in
+`mygame/drenv.toml` and drenv resolves them into `mygame/vendor/`, pins them in
+`mygame/drenv.lock`, and generates `mygame/app/drenv_bundle.rb` with the
+matching `require` lines.
+
+```toml
+# mygame/drenv.toml
+[dependencies.draco]
+github = "guitsaru/draco"
+tag = "v0.7.0"
+entrypoint = "draco.rb"
+
+[dependencies.my_engine]
+git = "https://gitlab.com/me/my_engine.git"
+branch = "main"
+entrypoint = "lib/my_engine.rb"
+
+[dependencies.local_lib]
+path = "../local_lib"
+entrypoint = "lib/local_lib.rb"
+```
+
+Each dependency declares exactly one source — `github`, `url`, `git`, or `path`
+— plus the `entrypoint` to load. Then add a single line to the top of
+`mygame/app/main.rb`:
+
+```ruby
+require 'app/drenv_bundle.rb'
+```
+
+Commit `drenv.toml` and `drenv.lock`, and add `mygame/vendor/` to your
+`.gitignore`.
+
+### `drenv bundle`
+
+Resolves every dependency in `mygame/drenv.toml`, vendors it into
+`mygame/vendor/`, and writes `mygame/drenv.lock` and
+`mygame/app/drenv_bundle.rb`. `drenv run` does this for you before launching;
+run it directly when you only want to refresh dependencies.
 
 ## Managing drenv
 
@@ -124,4 +163,5 @@ Downloads and installs the latest version of **drenv**.
 
 ---
 
-Tested on macOS (Apple Silicon) with DragonRuby standard 5.32, 6.3, 6.4, and 6.18.
+Tested on macOS (Apple Silicon) with DragonRuby standard 5.32, 6.3, 6.4, and
+6.18.

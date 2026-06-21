@@ -3,13 +3,14 @@ import { greaterThan, tryParse } from "@std/semver";
 
 import config from "./deno.json" with { type: "json" };
 
-import add from "./commands/add.ts";
+import bundle from "./commands/bundle.ts";
 import changelog from "./commands/changelog.ts";
 import global from "./commands/global.ts";
 import install from "./commands/install.ts";
 import update from "./commands/update.ts";
 import newCommand from "./commands/new.ts";
 import register from "./commands/register.ts";
+import run from "./commands/run.ts";
 import setup from "./commands/setup.ts";
 import upgrade from "./commands/upgrade.ts";
 import versions from "./commands/versions.ts";
@@ -79,10 +80,15 @@ program
   .action(actionRunner(register));
 
 program
-  .command("add")
-  .argument("<recipe>", "Name of the recipe to add")
-  .description("Setup a pre-configured library")
-  .action(actionRunner(add));
+  .command("bundle")
+  .description("Resolve and vendor dependencies from mygame/drenv.toml")
+  .action(actionRunner(bundle));
+
+program
+  .command("run")
+  .argument("[args...]", "Arguments forwarded to the dragonruby binary")
+  .description("Sync dependencies and launch the project with DragonRuby")
+  .action(actionRunner(run, { skipUpdateCheck: true }));
 
 program
   .command("global")
