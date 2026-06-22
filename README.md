@@ -140,8 +140,9 @@ of `mygame/app/main.rb`:
 require 'app/drenv_bundle.rb'
 ```
 
-Commit `drenv.toml` and `drenv.lock`, and add `mygame/vendor/` to your
-`.gitignore`.
+Commit `drenv.toml` and `drenv.lock`. drenv keeps `mygame/vendor/` out of
+version control for you with a generated `vendor/.gitignore`, since vendored
+dependencies are reproducible from the lockfile.
 
 ### `drenv add <source>`
 

@@ -75,6 +75,15 @@ describe("bundler (path source)", () => {
     assert(generated.includes("require 'vendor/conjuration/conjuration.rb'"));
   });
 
+  it("writes a vendor/.gitignore so vendored deps stay out of git", async () => {
+    await bundle(project);
+
+    const ignore = await Deno.readTextFile(
+      join(project.mygame, "vendor", ".gitignore"),
+    );
+    assert(ignore.includes("*"));
+  });
+
   it("locks the path dependency without an integrity hash", async () => {
     await bundle(project);
 

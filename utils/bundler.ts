@@ -11,7 +11,7 @@ import {
 } from "./lockfile.ts";
 import { fileDigest, treeDigest } from "./integrity.ts";
 import { type VendorContext, vendorDependency } from "./sources/mod.ts";
-import { writeBundleFile } from "./bundle-file.ts";
+import { ensureVendorIgnore, writeBundleFile } from "./bundle-file.ts";
 import type { Project } from "./project.ts";
 
 export type BundleResult = {
@@ -53,6 +53,7 @@ export const bundle = async (
 
   await writeLock(project.lockPath, lock);
   await writeBundleFile(project.mygame, lock);
+  await ensureVendorIgnore(project.mygame);
 
   return { lock, needsRequireLine: await needsRequireLine(project) };
 };
@@ -107,6 +108,7 @@ export const reconcile = async (
   }
 
   await writeBundleFile(project.mygame, lock);
+  await ensureVendorIgnore(project.mygame);
 
   return { lock, needsRequireLine: await needsRequireLine(project) };
 };
