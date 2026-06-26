@@ -95,8 +95,9 @@ Lists all registered versions, with the current local version marked:
 
 ### `drenv new <name>`
 
-Creates a new DragonRuby project by copying the global version into a new
-directory.
+Creates a new DragonRuby project by copying a registered version into a new
+directory. Uses the global version by default; pass `--version <version>` to
+pick a specific one.
 
 ### `drenv update [version]`
 

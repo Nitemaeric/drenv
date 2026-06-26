@@ -63,7 +63,10 @@ const actionRunner = (
 program
   .name("drenv")
   .description("CLI to manage DragonRuby environments")
-  .version(config.version);
+  .version(config.version)
+  // Restrict the program's `--version` to before a subcommand, so `new` can
+  // accept its own `--version <version>` option.
+  .enablePositionalOptions();
 
 program
   .command("setup")
@@ -73,6 +76,10 @@ program
 program
   .command("new")
   .argument("<name>", "Name of the new project")
+  .option(
+    "--version <version>",
+    "DragonRuby version to use (defaults to the global version)",
+  )
   .description("Create a new DragonRuby project")
   .action(actionRunner(newCommand));
 
