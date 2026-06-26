@@ -149,8 +149,11 @@ program
 
 program
   .command("update")
-  .argument("[version]", "Version of DragonRuby to use")
-  .description("Get or set the local version of DragonRuby")
+  .option(
+    "--version <version>",
+    "DragonRuby version to update to (defaults to the latest installed)",
+  )
+  .description("Update the current project to a DragonRuby version")
   .action(actionRunner(update));
 
 program

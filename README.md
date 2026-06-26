@@ -99,10 +99,11 @@ Creates a new DragonRuby project by copying a registered version into a new
 directory. Uses the global version by default; pass `--version <version>` to
 pick a specific one.
 
-### `drenv update [version]`
+### `drenv update`
 
-Updates the current directory's DragonRuby version, preserving the `mygame`
-directory.
+Updates the current project to a registered DragonRuby version, preserving the
+`mygame` directory. Defaults to the latest installed version; pass
+`--version <version>` for a specific one. Asks for confirmation first.
 
 ### `drenv run [args...]`
 
