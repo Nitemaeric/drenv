@@ -96,8 +96,10 @@ Lists all registered versions, with the current local version marked:
 ### `drenv new <name>`
 
 Creates a new DragonRuby project by copying a registered version into a new
-directory. Uses the global version by default; pass `--version <version>` to
-pick a specific one.
+directory, and writes a project `.gitignore` (covering the DragonRuby binaries,
+`builds/`, `tmp/`, `logs/`, docs, and samples). Uses the global version by
+default; pass `--version <version>` for a specific one, or `--skip-gitignore` to
+skip writing the `.gitignore`.
 
 ### `drenv update`
 
