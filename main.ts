@@ -95,6 +95,7 @@ program
   .command("run")
   .argument("[args...]", "Arguments forwarded to the dragonruby binary")
   .option("--frozen", "Verify against the lockfile instead of updating it")
+  .option("--no-watch", "Don't re-sync path dependencies as they change")
   .allowUnknownOption()
   .description("Sync dependencies and launch the project with DragonRuby")
   .action(actionRunner(run, { skipUpdateCheck: true }));

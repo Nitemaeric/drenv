@@ -105,8 +105,11 @@ directory.
 
 ### `drenv run [args...]`
 
-Syncs the current project's dependencies and launches it with DragonRuby. Any
-extra arguments are forwarded to the `dragonruby` binary.
+Syncs the current project's dependencies and launches it with DragonRuby. While
+the game runs, drenv watches any `path:` dependencies and re-vendors them as you
+edit, so changes hot-reload into the running game — handy when developing a
+library alongside it. Pass `--no-watch` to turn that off (`--frozen` skips it
+too). Extra arguments are forwarded to the `dragonruby` binary.
 
 ## Managing Dependencies
 
