@@ -80,6 +80,7 @@ program
     "--version <version>",
     "DragonRuby version to use (defaults to the global version)",
   )
+  .option("--skip-gitignore", "Don't generate a .gitignore in the new project")
   .description("Create a new DragonRuby project")
   .action(actionRunner(newCommand));
 

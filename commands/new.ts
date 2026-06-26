@@ -15,16 +15,45 @@ export class NotInstalled extends Error {
   }
 }
 
+const PROJECT_GITIGNORE = `.DS_Store
+
+# DragonRuby binaries (re-added by drenv new / drenv update)
+dragonruby
+dragonruby.exe
+dragonruby-publish
+dragonruby-publish.exe
+dragonruby-bind
+dragonruby-bind.exe
+dragonruby-firestarter
+dragonruby-httpd
+
+# Build and runtime artifacts
+builds/
+logs/
+tmp/
+.dragonruby/
+
+# Bundled DragonRuby docs and samples
+docs/
+samples/
+`;
+
+type NewOptions = { version?: string; skipGitignore?: boolean };
+
 export default async function newCommand(
   name: string,
-  options: { version?: string } = {},
+  options: NewOptions = {},
 ) {
   if (options.version) {
     if (!await exists(`${versionsPath}/${options.version}`)) {
       throw new NotInstalled(options.version);
     }
-    return copy(`${versionsPath}/${options.version}`, name);
+    await copy(`${versionsPath}/${options.version}`, name);
+  } else {
+    await copy(`${versionsPath}/${await global()}`, name);
   }
 
-  return copy(`${versionsPath}/${await global()}`, name);
+  if (!options.skipGitignore) {
+    await Deno.writeTextFile(`${name}/.gitignore`, PROJECT_GITIGNORE);
+  }
 }

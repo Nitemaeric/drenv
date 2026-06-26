@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
-import { assert, assertRejects } from "@std/assert";
+import { assert, assertRejects, assertStringIncludes } from "@std/assert";
 import { ensureDir, exists } from "@std/fs";
 import { join } from "@std/path";
 
@@ -36,6 +36,31 @@ describe("new", () => {
         "version '0.0.0' not installed",
       );
 
+      await Deno.remove(tmp, { recursive: true });
+    });
+  });
+
+  describe(".gitignore", () => {
+    it("generates a project .gitignore by default", async () => {
+      const tmp = await Deno.makeTempDir({ prefix: "drenv-new-" });
+      const dest = join(tmp, "proj");
+
+      await newCommand(dest, { version: "99.99" });
+
+      const gitignore = await Deno.readTextFile(join(dest, ".gitignore"));
+      assertStringIncludes(gitignore, "dragonruby");
+      assertStringIncludes(gitignore, "tmp/");
+
+      await Deno.remove(tmp, { recursive: true });
+    });
+
+    it("skips it with --skip-gitignore", async () => {
+      const tmp = await Deno.makeTempDir({ prefix: "drenv-new-" });
+      const dest = join(tmp, "proj");
+
+      await newCommand(dest, { version: "99.99", skipGitignore: true });
+
+      assert(!await exists(join(dest, ".gitignore")));
       await Deno.remove(tmp, { recursive: true });
     });
   });
