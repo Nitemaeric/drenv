@@ -45,7 +45,9 @@ export const watchPathDeps = async (
 
   const watcher = Deno.watchFs(targets.map((t) => t.dir));
   const pending = new Set<string>();
-  let timer: number | undefined;
+  // `ReturnType<typeof setTimeout>` rather than `number`: newer Deno types the
+  // timer id as `Timeout`.
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let flushing: Promise<void> = Promise.resolve();
 
   const stop = () => {
