@@ -1,7 +1,7 @@
 import { copy, exists } from "@std/fs";
 
-import { readVersion } from "../utils/read-version.ts";
 import { versionsPath } from "../constants.ts";
+import { latestInstalledVersion } from "../utils/installed-versions.ts";
 
 export class NotInstalled extends Error {
   version: string;
@@ -14,34 +14,39 @@ export class NotInstalled extends Error {
   }
 }
 
-export default function local(version: string | undefined = undefined) {
-  if (version) {
-    return setLocalVersion(version);
-  } else {
-    return getLocalVersion();
+export class NoVersionsInstalled extends Error {
+  constructor() {
+    super("drenv: no versions installed — run `drenv install` first");
+    this.name = "NoVersionsInstalled";
   }
 }
 
-const setLocalVersion = async (version: string) => {
-  const sourceDirectory = `${versionsPath}/${version}`;
+export default async function update(options: { version?: string } = {}) {
+  const version = options.version ?? await latestInstalledVersion();
 
-  if (!await exists(sourceDirectory)) {
+  if (!version) {
+    throw new NoVersionsInstalled();
+  }
+
+  if (!await exists(`${versionsPath}/${version}`)) {
     throw new NotInstalled(version);
   }
 
-  const items = Deno.readDir(sourceDirectory);
-
-  for await (const item of items) {
-    if (item.name == "mygame") {
-      continue;
-    }
-
-    await copy(sourceDirectory + "/" + item.name, "./" + item.name, {
-      overwrite: true,
-    });
+  const answer = prompt(`drenv: Update to version ${version}? Y/n (Y)`) ?? "";
+  if (answer.trim().toLowerCase().startsWith("n")) {
+    return "drenv: update cancelled";
   }
-};
 
-const getLocalVersion = () => {
-  return readVersion("./CHANGELOG-CURR.txt");
-};
+  // Copy the version's files over the current directory, preserving the game.
+  for await (const item of Deno.readDir(`${versionsPath}/${version}`)) {
+    if (item.name === "mygame") continue;
+
+    await copy(
+      `${versionsPath}/${version}/${item.name}`,
+      `./${item.name}`,
+      { overwrite: true },
+    );
+  }
+
+  return `drenv: Updated to version ${version}`;
+}
