@@ -9,15 +9,48 @@ import { homePath } from "../constants.ts";
 const DRAGONRUBY_GAME_ID = 404609;
 const ITCH_API = "https://api.itch.io";
 
-const buildTargetLookup: Record<string, string> = {
-  "x86_64-pc-windows-msvc": "dragonruby-gtk-windows-amd64.zip",
-  "x86_64-apple-darwin": "dragonruby-gtk-macos.zip",
-  "aarch64-apple-darwin": "dragonruby-gtk-macos.zip",
-  "x86_64-unknown-linux-gnu": "dragonruby-gtk-linux-amd64.zip",
-  "aarch64-unknown-linux-gnu": "dragonruby-gtk-linux-arm64.zip",
+export type Tier = "standard" | "indie" | "pro";
+const TIERS: Tier[] = ["standard", "indie", "pro"];
+
+// Token found in the itch upload filename for each platform, e.g.
+// `dragonruby-gtk-macos.zip` or `dragonruby-gtk-pro-linux-amd64.zip`.
+const platformToken: Record<string, string> = {
+  "x86_64-pc-windows-msvc": "windows-amd64",
+  "x86_64-apple-darwin": "macos",
+  "aarch64-apple-darwin": "macos",
+  "x86_64-unknown-linux-gnu": "linux-amd64",
+  "aarch64-unknown-linux-gnu": "linux-arm64",
 };
 
-const downloadName = buildTargetLookup[Deno.build.target];
+export const validateTier = (tier: string): Tier => {
+  const value = tier.trim().toLowerCase();
+  if ((TIERS as string[]).includes(value)) return value as Tier;
+  throw new Error(
+    `drenv: unknown tier '${tier}' (expected ${TIERS.join(", ")})`,
+  );
+};
+
+/** Resolves the tier from the flag, the persisted choice, or an interactive prompt. */
+const resolveTier = async (kv: Deno.Kv, flag?: string): Promise<Tier> => {
+  if (flag) return validateTier(flag);
+
+  const persisted = (await kv.get<Tier>(["dragonruby", "tier"])).value;
+  if (persisted) return persisted;
+
+  const answer = prompt(
+    "drenv: Which DragonRuby tier do you own? (standard/indie/pro) [standard]",
+  ) ??
+    "";
+  return validateTier(answer.trim() || "standard");
+};
+
+/** Whether an upload filename belongs to the given tier. */
+export const matchesTier = (filename: string, tier: Tier): boolean => {
+  const name = filename.toLowerCase();
+  if (tier === "pro") return name.includes("pro");
+  if (tier === "indie") return name.includes("indie");
+  return !name.includes("pro") && !name.includes("indie");
+};
 
 async function itchLogin(username: string, password: string): Promise<string> {
   const res = await fetch(`${ITCH_API}/login`, {
@@ -98,10 +131,11 @@ async function getDownloadKeyId(apiKey: string): Promise<number> {
   return entry.id;
 }
 
-async function getUploadId(
+async function getUpload(
   apiKey: string,
   downloadKeyId: number,
-): Promise<number> {
+  tier: Tier,
+): Promise<{ id: number; filename: string }> {
   const res = await fetch(
     `${ITCH_API}/games/${DRAGONRUBY_GAME_ID}/uploads?download_key_id=${downloadKeyId}`,
     { headers: { "Authorization": apiKey } },
@@ -121,13 +155,24 @@ async function getUploadId(
     ? data.uploads
     : Object.values(data.uploads);
 
-  const upload = uploads.find((u) => u.filename === downloadName);
-
-  if (!upload) {
-    throw new Error(`drenv: no upload found for platform (${downloadName})`);
+  const token = platformToken[Deno.build.target];
+  if (!token) {
+    throw new Error(`drenv: unsupported platform (${Deno.build.target})`);
   }
 
-  return upload.id;
+  const upload = uploads.find((u) =>
+    u.filename.includes(token) && matchesTier(u.filename, tier)
+  );
+
+  if (!upload) {
+    throw new Error(
+      `drenv: no ${tier} download found for your platform — available: ${
+        uploads.map((u) => u.filename).join(", ") || "none"
+      }`,
+    );
+  }
+
+  return upload;
 }
 
 async function downloadUpload(
@@ -158,63 +203,133 @@ async function downloadUpload(
   await fileRes.body.pipeTo(file.writable);
 }
 
-export default async function install(tier: string = "standard") {
-  if (tier !== "standard") {
-    throw new Error("drenv: Only the standard tier is supported at this time");
-  }
+// dragonruby.org's platform token, e.g. download_pro_subscription_linux_amd64.
+const drOrgPlatform: Record<string, string> = {
+  "x86_64-pc-windows-msvc": "windows",
+  "x86_64-apple-darwin": "mac",
+  "aarch64-apple-darwin": "mac",
+  "x86_64-unknown-linux-gnu": "linux_amd64",
+  "aarch64-unknown-linux-gnu": "linux_arm64",
+};
 
-  const kv = await Deno.openKv(homePath + "/database.db");
+/** Downloads the standard tier from itch.io. Returns the register message. */
+async function installFromItch(kv: Deno.Kv, spinner: Ora): Promise<string> {
   let apiKey: string = (await kv.get(["itch", "apiKey"])).value as string;
 
-  const spinner = ora({ discardStdin: false }).start("Signing into itch.io");
+  if (!apiKey) {
+    apiKey = await authenticate(kv, spinner);
+  }
+
+  spinner.text = "Finding DragonRuby GTK download key...";
+  let downloadKeyId: number;
+  try {
+    downloadKeyId = await getDownloadKeyId(apiKey);
+  } catch {
+    // Cached key may be expired — re-authenticate and retry once
+    apiKey = await authenticate(kv, spinner);
+    downloadKeyId = await getDownloadKeyId(apiKey);
+  }
+
+  const upload = await getUpload(apiKey, downloadKeyId, "standard");
+
+  spinner.text = `Downloading ${upload.filename}...`;
+  await ensureDir("./tmp");
+  await downloadUpload(
+    apiKey,
+    upload.id,
+    downloadKeyId,
+    `./tmp/${upload.filename}`,
+  );
+
+  spinner.text = "Installing...";
+  return register(`./tmp/${upload.filename}`);
+}
+
+/** Downloads a subscription tier (indie/pro) from dragonruby.org. */
+async function installFromDragonRubyOrg(
+  tier: Tier,
+  spinner: Ora,
+): Promise<string> {
+  const platform = drOrgPlatform[Deno.build.target];
+  if (!platform) {
+    throw new Error(`drenv: unsupported platform (${Deno.build.target})`);
+  }
+
+  spinner.stop();
+  const email = prompt("dragonruby.org email:") ?? "";
+  const password = promptSecret("dragonruby.org password:") ?? "";
+  spinner.start(`Fetching ${tier} download...`);
+
+  // Basic-auth endpoint returns the download URL as its body.
+  const endpoint =
+    `https://dragonruby.org/api/download_${tier}_subscription_${platform}`;
+  const res = await fetch(endpoint, {
+    headers: { "Authorization": `Basic ${btoa(`${email}:${password}`)}` },
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      res.status === 401 || res.status === 403
+        ? "drenv: dragonruby.org login failed — check your email and password"
+        : `drenv: dragonruby.org request failed with status ${res.status}`,
+    );
+  }
+
+  const downloadUrl = (await res.text()).trim();
+
+  spinner.text = `Downloading ${tier} DragonRuby...`;
+  const fileRes = await fetch(downloadUrl);
+  if (!fileRes.ok || !fileRes.body) {
+    throw new Error(`drenv: download failed with status ${fileRes.status}`);
+  }
+
+  await ensureDir("./tmp");
+  const destPath = `./tmp/dragonruby-${tier}-${platform}.zip`;
+  const file = await Deno.create(destPath);
+  await fileRes.body.pipeTo(file.writable);
+
+  spinner.text = "Installing...";
+  return register(destPath);
+}
+
+export default async function install(options: { tier?: string } = {}) {
+  const kv = await Deno.openKv(homePath + "/database.db");
 
   try {
-    if (!apiKey) {
-      apiKey = await authenticate(kv, spinner);
-    }
-
-    spinner.text = "Finding DragonRuby GTK download key...";
-    let downloadKeyId: number;
-    try {
-      downloadKeyId = await getDownloadKeyId(apiKey);
-    } catch {
-      // Cached key may be expired — re-authenticate and retry once
-      apiKey = await authenticate(kv, spinner);
-      downloadKeyId = await getDownloadKeyId(apiKey);
-    }
-
-    spinner.text = `Downloading ${downloadName}...`;
-    const [uploadId] = await Promise.all([
-      getUploadId(apiKey, downloadKeyId),
-      ensureDir("./tmp"),
-    ]);
-
-    await downloadUpload(
-      apiKey,
-      uploadId,
-      downloadKeyId,
-      `./tmp/${downloadName}`,
+    const tier = await resolveTier(kv, options.tier);
+    const spinner = ora({ discardStdin: false }).start(
+      `Installing DragonRuby (${tier})`,
     );
 
-    spinner.text = "Installing...";
-    const message = await register(`./tmp/${downloadName}`);
-    const version = message.replace("drenv: Installed ", "");
-
-    let setAsGlobal = false;
     try {
-      await global();
-    } catch (err) {
-      if (err instanceof NoGlobalVersion) {
-        await global(version);
-        setAsGlobal = true;
-      }
-    }
+      const message = tier === "standard"
+        ? await installFromItch(kv, spinner)
+        : await installFromDragonRubyOrg(tier, spinner);
 
-    spinner.succeed(setAsGlobal ? `${message} (set as global)` : message);
-  } catch (err) {
-    spinner.fail((err as Error).message);
+      const version = message.replace("drenv: Installed ", "");
+
+      let setAsGlobal = false;
+      try {
+        await global();
+      } catch (err) {
+        if (err instanceof NoGlobalVersion) {
+          await global(version);
+          setAsGlobal = true;
+        }
+      }
+
+      // Remember the tier so future installs don't re-prompt.
+      await kv.set(["dragonruby", "tier"], tier);
+
+      spinner.succeed(
+        `${message} (${tier}${setAsGlobal ? ", set as global" : ""})`,
+      );
+    } catch (err) {
+      spinner.fail((err as Error).message);
+    } finally {
+      spinner.stop();
+    }
   } finally {
-    spinner.stop();
     kv.close();
   }
 }
