@@ -10,8 +10,10 @@ configure({ useWebWorkers: false });
 export default async function register(path: string) {
   const zipOrDirectory = await Deno.open(path);
 
+  let fromZip = false;
   if (extname(path) === ".zip") {
     path = await extractZip(zipOrDirectory);
+    fromZip = true;
   }
 
   const directory = await Deno.open(path);
@@ -35,7 +37,10 @@ export default async function register(path: string) {
 
   await move(path, `${versionsPath}/${version}`);
 
-  await Deno.remove("./tmp", { recursive: true });
+  // Only the zip path stages files under ./tmp; a directory register doesn't.
+  if (fromZip) {
+    await Deno.remove("./tmp", { recursive: true }).catch(() => {});
+  }
 
   return `drenv: Installed ${version}`;
 }

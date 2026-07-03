@@ -1,4 +1,4 @@
-import { Argument, Command } from "commander";
+import { Command } from "commander";
 import { greaterThan, tryParse } from "@std/semver";
 
 import config from "./deno.json" with { type: "json" };
@@ -178,12 +178,11 @@ program
 
 program
   .command("install")
-  .addArgument(
-    new Argument("[tier]", "Tier of DragonRuby to install")
-      .choices(["standard", "indie", "pro"])
-      .default("standard"),
+  .option(
+    "--tier <tier>",
+    "DragonRuby tier: standard, indie, or pro (prompts if unset)",
   )
-  .description("Install the latest version of drenv")
+  .description("Install the latest version of DragonRuby GTK")
   .action(actionRunner(install));
 
 program.parse();

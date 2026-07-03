@@ -42,13 +42,15 @@ deno compile -A --unstable-kv --output=builds/drenv --target=aarch64-apple-darwi
 drenv install
 ```
 
-This signs into your [itch.io](https://itch.io) account and downloads the latest
-version of DragonRuby GTK. Your credentials are stored as a revocable API key —
-never as a plaintext password.
+drenv asks which tier you own (standard, indie, or pro) and remembers it, then
+downloads the latest DragonRuby GTK. Standard comes from your
+[itch.io](https://itch.io) account (stored as a revocable API key, never a
+plaintext password); indie and pro come from
+[dragonruby.org](https://dragonruby.org) via your account email and password.
 
 > [!NOTE]
-> `drenv install` requires a DragonRuby GTK purchase on itch.io. Only the
-> standard tier is supported at this time.
+> `drenv install` requires a DragonRuby GTK purchase — itch.io for standard, a
+> dragonruby.org subscription for indie/pro.
 
 ### 2. Set a global version
 
@@ -66,9 +68,11 @@ drenv new my-game
 
 ## Managing DragonRuby Versions
 
-### `drenv install [tier]`
+### `drenv install`
 
-Downloads and installs the latest version of DragonRuby GTK from itch.io.
+Downloads and installs the latest DragonRuby GTK. Prompts for your tier the
+first time and remembers it; pass `--tier standard|indie|pro` to choose or
+switch. Standard downloads from itch.io, indie and pro from dragonruby.org.
 
 ### `drenv register <path>`
 
