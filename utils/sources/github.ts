@@ -26,6 +26,17 @@ const resolveSha = async (
   }
 };
 
+/** The current upstream commit for a github dependency's requested ref. */
+export const githubRef = async (
+  spec: DependencySpec,
+): Promise<string | null> => {
+  const [owner, repo] = spec.github!.split("/");
+  if (!owner || !repo) return null;
+
+  const requested = spec.ref ?? spec.tag ?? spec.branch ?? "HEAD";
+  return (await resolveSha(owner, repo, requested)) ?? null;
+};
+
 export const vendorGithub = async (
   spec: DependencySpec,
   ctx: VendorContext,

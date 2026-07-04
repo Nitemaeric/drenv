@@ -26,6 +26,22 @@ const git = async (
   };
 };
 
+/**
+ * The current upstream commit for a git dependency's tracked ref via
+ * `git ls-remote`. Returns null for pinned commits (not listed as a ref) or
+ * when the remote can't be reached.
+ */
+export const gitRef = async (
+  spec: DependencySpec,
+): Promise<string | null> => {
+  const named = spec.ref ?? spec.tag ?? spec.branch ?? "HEAD";
+  const { ok, stdout } = await git(["ls-remote", spec.git!, named]);
+  if (!ok || !stdout) return null;
+
+  // Each line is "<sha>\t<ref>"; take the first match's sha.
+  return stdout.split("\n")[0]?.split("\t")[0] || null;
+};
+
 export const vendorGit = async (
   spec: DependencySpec,
   ctx: VendorContext,

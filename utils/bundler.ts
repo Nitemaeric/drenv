@@ -113,6 +113,53 @@ export const reconcile = async (
   return { lock, needsRequireLine: await needsRequireLine(project) };
 };
 
+/**
+ * Re-resolves a single dependency to its latest, keeping every other dependency
+ * at its currently locked revision. Any manifest dependency not yet in the lock
+ * is resolved too, so the lock and bundle stay complete.
+ */
+export const updateDependency = async (
+  project: Project,
+  name: string,
+  options: Options = {},
+): Promise<BundleResult> => {
+  const log = options.log ?? (() => {});
+  const manifest = await readManifest(project.manifestPath);
+
+  if (!manifest.dependencies.some((dep) => dep.name === name)) {
+    throw new Error(
+      `drenv: no dependency named '${name}' in ${project.manifestPath}`,
+    );
+  }
+
+  const existing = await readLock(project.lockPath);
+  const ctx = context(project, log);
+
+  const dependencies: LockedDependency[] = [];
+  for (const spec of manifest.dependencies) {
+    const locked = existing?.dependencies.find((dep) => dep.name === spec.name);
+
+    // Re-resolve the target, and anything not yet locked; reuse the rest.
+    if (spec.name === name || !locked) {
+      dependencies.push(await vendorDependency(spec, ctx));
+    } else {
+      dependencies.push(locked);
+    }
+  }
+
+  const lock: Lockfile = {
+    lockfile_version: LOCKFILE_VERSION,
+    manifest_digest: await fileDigest(project.manifestPath),
+    dependencies,
+  };
+
+  await writeLock(project.lockPath, lock);
+  await writeBundleFile(project.mygame, lock);
+  await ensureVendorIgnore(project.mygame);
+
+  return { lock, needsRequireLine: await needsRequireLine(project) };
+};
+
 const matches = async (
   dir: string,
   integrity: string | undefined,
