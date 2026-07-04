@@ -57,6 +57,31 @@ conventional entrypoint, `-n, --name` to override the derived name, and
 Removes a dependency from `mygame/drenv.toml`, deletes its vendored copy, and
 updates the lock.
 
+### `drenv list`
+
+Lists the project's dependencies with their source and the short revision each
+is locked to (path deps show `—`, since they aren't revision-tracked).
+
+```
+conjuration  github:Nitemaeric/conjuration  a1b2c3d
+draco        github:guitsaru/draco@v0.7.0   e4f5a6b
+local_lib    path:../local_lib              —
+```
+
+### `drenv update [name]`
+
+Re-resolves dependencies to their latest allowed revision and rewrites the
+lockfile, reporting what moved. With a name, only that dependency is updated and
+the rest stay pinned to their locked revisions; without one, everything is
+re-resolved. Pinned deps (a `tag` or `ref`) don't move; floating ones (a
+`branch`, or no pin) advance to the newest commit.
+
+### `drenv outdated`
+
+Checks each remote dependency's upstream against the lockfile and lists the ones
+whose tracked revision has moved on, so you can decide what to `drenv update`.
+Path and URL sources aren't revision-tracked and are skipped.
+
 ### `drenv bundle`
 
 Resolves every dependency in `mygame/drenv.toml`, vendors it into

@@ -102,11 +102,14 @@ Run `drenv <command> --help` for flags and details.
 
 **Dependency management**
 
-| Command         | Description                                |
-| --------------- | ------------------------------------------ |
-| `add <source>`  | Add and vendor a dependency                |
-| `remove <name>` | Remove a dependency                        |
-| `bundle`        | Re-vendor from `drenv.toml` / the lockfile |
+| Command         | Description                                 |
+| --------------- | ------------------------------------------- |
+| `add <source>`  | Add and vendor a dependency                 |
+| `remove <name>` | Remove a dependency                         |
+| `list`          | List dependencies and their locked revs     |
+| `update [name]` | Bump dependencies to their latest           |
+| `outdated`      | Show which dependencies have upstream moves |
+| `bundle`        | Re-vendor from `drenv.toml` / the lockfile  |
 
 **Managing drenv**
 

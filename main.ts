@@ -4,6 +4,9 @@ import { greaterThan, tryParse } from "@std/semver";
 import config from "./deno.json" with { type: "json" };
 
 import add from "./commands/add.ts";
+import list from "./commands/list.ts";
+import update from "./commands/update.ts";
+import outdated from "./commands/outdated.ts";
 import bundle from "./commands/bundle.ts";
 import changelog from "./commands/changelog.ts";
 import install from "./commands/install.ts";
@@ -205,6 +208,27 @@ program
   .description("Remove a dependency from mygame/drenv.toml")
   .helpGroup(DEPENDENCIES)
   .action(actionRunner(remove));
+
+program
+  .command("list")
+  .description("List the project's dependencies and their locked revisions")
+  .helpGroup(DEPENDENCIES)
+  .action(actionRunner(list));
+
+program
+  .command("update")
+  .argument("[name]", "Dependency to update (default: all)")
+  .description(
+    "Re-resolve dependencies to their latest and update the lockfile",
+  )
+  .helpGroup(DEPENDENCIES)
+  .action(actionRunner(update));
+
+program
+  .command("outdated")
+  .description("Show dependencies whose upstream has moved past the lockfile")
+  .helpGroup(DEPENDENCIES)
+  .action(actionRunner(outdated));
 
 program
   .command("bundle")
