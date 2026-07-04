@@ -6,7 +6,6 @@ import config from "./deno.json" with { type: "json" };
 import add from "./commands/add.ts";
 import bundle from "./commands/bundle.ts";
 import changelog from "./commands/changelog.ts";
-import global from "./commands/global.ts";
 import install from "./commands/install.ts";
 import use from "./commands/use.ts";
 import newCommand from "./commands/new.ts";
@@ -106,13 +105,6 @@ program
   .action(actionRunner(versions));
 
 program
-  .command("global")
-  .argument("[version]", "Version of DragonRuby to use")
-  .description("Get or set the global version of DragonRuby")
-  .helpGroup(ENGINE)
-  .action(actionRunner(global));
-
-program
   .command("changelog")
   .argument("[version]", "Version of DragonRuby to print the changelog for")
   .description(
@@ -128,7 +120,7 @@ program
   .argument("<name>", "Name of the new project")
   .option(
     "--version <version>",
-    "DragonRuby version to use (defaults to the global version)",
+    "DragonRuby version to use (defaults to the latest installed)",
   )
   .option("--skip-gitignore", "Don't generate a .gitignore in the new project")
   .description("Create a new DragonRuby project")

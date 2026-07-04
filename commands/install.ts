@@ -2,7 +2,6 @@ import { promptSecret } from "@std/cli";
 import { ensureDir } from "@std/fs";
 import ora, { type Ora } from "ora";
 
-import global, { NoGlobalVersion } from "./global.ts";
 import register from "./register.ts";
 import { homePath } from "../constants.ts";
 import { type Tier, validateTier } from "../utils/tier.ts";
@@ -320,26 +319,10 @@ export default async function install(options: { tier?: string } = {}) {
         ? await installFromItch(kv, spinner)
         : await installFromDragonRubyOrg(kv, tier, spinner);
 
-      // The register message ends with the directory name, which already
-      // encodes the tier (e.g. `7.11-pro`).
-      const dirName = message.replace("drenv: Installed ", "");
-
-      let setAsGlobal = false;
-      try {
-        await global();
-      } catch (err) {
-        if (err instanceof NoGlobalVersion) {
-          await global(dirName);
-          setAsGlobal = true;
-        }
-      }
-
       // Remember the tier so future installs don't re-prompt.
       await kv.set(["dragonruby", "tier"], tier);
 
-      spinner.succeed(
-        `${message}${setAsGlobal ? " (set as global)" : ""}`,
-      );
+      spinner.succeed(message);
     } catch (err) {
       spinner.fail((err as Error).message);
     } finally {

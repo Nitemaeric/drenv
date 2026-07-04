@@ -20,8 +20,9 @@ installing pro doesn't clobber your standard copy of the same version.
 A bare version resolves to the **highest tier you have installed**: `7.11` picks
 `7.11-pro` if present, then `7.11-indie`, then `7.11` (standard). To pin a tier,
 name it — `7.11-pro`, or `7.11-standard` for the standard build. This resolution
-applies everywhere a version is accepted (`global`, `new --version`, `use`), and
-`drenv use` with no version switches to your highest installed tier.
+applies everywhere a version is accepted (`new --version`, `use`). With no
+version, `new` and `use` both default to your newest install (highest version,
+highest tier).
 
 ## Commands
 
@@ -29,8 +30,7 @@ applies everywhere a version is accepted (`global`, `new --version`, `use`), and
 
 Downloads and installs the latest DragonRuby GTK. Prompts for your tier the
 first time and remembers it. Requires a DragonRuby purchase — itch.io for
-standard, a dragonruby.org subscription for indie/pro. Your first install is
-also set as the global default.
+standard, a dragonruby.org subscription for indie/pro.
 
 ### `drenv register <path> [--tier <tier>]`
 
@@ -38,11 +38,6 @@ Registers a local install manually. The path can be a `.zip` file or a directory
 containing the `dragonruby` executable — handy if you already have a copy
 downloaded. Pass `--tier indie|pro` to file it under that tier (defaults to
 `standard`).
-
-### `drenv global [version]`
-
-Sets the global DragonRuby version used when creating new projects. Without
-arguments, prints the current global version.
 
 ### `drenv versions`
 
