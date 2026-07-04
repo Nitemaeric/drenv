@@ -1,7 +1,7 @@
 import { exists } from "@std/fs";
-import { join } from "@std/path";
 
 import { findProject } from "../utils/project.ts";
+import { dragonrubyBinary } from "../utils/version.ts";
 import { reconcile } from "../utils/bundler.ts";
 import { BUNDLE_REQUIRE } from "../utils/bundle-file.ts";
 import { watchPathDeps } from "../utils/watch.ts";
@@ -28,10 +28,7 @@ export default async function run(
     }
   }
 
-  const binary = join(
-    project.root,
-    Deno.build.os === "windows" ? "dragonruby.exe" : "dragonruby",
-  );
+  const binary = dragonrubyBinary(project.root);
 
   if (!await exists(binary)) {
     throw new Error(`drenv: dragonruby binary not found at ${binary}`);
