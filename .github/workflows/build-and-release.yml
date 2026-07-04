@@ -92,6 +92,17 @@ jobs:
     needs:
       - build
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify the tag is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} points at a commit that is not on main — refusing to publish a release."
+            exit 1
+          fi
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:

@@ -61,6 +61,7 @@ const actionRunner = (
 
 // Help groupings shown as headings in `drenv --help`.
 const ENGINE = "Engine management:";
+const PROJECT = "Project management:";
 const DEPENDENCIES = "Dependency management:";
 const DRENV = "Managing drenv:";
 
@@ -120,6 +121,8 @@ program
   .helpGroup(ENGINE)
   .action(actionRunner(changelog));
 
+// --- Project management ------------------------------------------------------
+
 program
   .command("new")
   .argument("<name>", "Name of the new project")
@@ -129,7 +132,7 @@ program
   )
   .option("--skip-gitignore", "Don't generate a .gitignore in the new project")
   .description("Create a new DragonRuby project")
-  .helpGroup(ENGINE)
+  .helpGroup(PROJECT)
   .action(actionRunner(newCommand));
 
 program
@@ -139,7 +142,7 @@ program
     "Version to switch the project to (defaults to the latest installed)",
   )
   .description("Switch the current project to a DragonRuby version")
-  .helpGroup(ENGINE)
+  .helpGroup(PROJECT)
   .action(actionRunner(use));
 
 program
@@ -149,7 +152,7 @@ program
   .option("--no-watch", "Don't re-sync path dependencies as they change")
   .allowUnknownOption()
   .description("Sync dependencies and launch the project with DragonRuby")
-  .helpGroup(ENGINE)
+  .helpGroup(PROJECT)
   .action(actionRunner(run, { skipUpdateCheck: true }));
 
 program
@@ -159,7 +162,7 @@ program
   .description(
     "Verify dependencies against the lockfile, then publish with dragonruby-publish",
   )
-  .helpGroup(ENGINE)
+  .helpGroup(PROJECT)
   .action(actionRunner(publish, { skipUpdateCheck: true }));
 
 // --- Dependency management --------------------------------------------------
