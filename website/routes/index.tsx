@@ -1,232 +1,180 @@
-import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import Nav from "../components/Nav.tsx";
+import Footer from "../components/Footer.tsx";
+import Terminal from "../components/Terminal.tsx";
+import InstallCommand from "../islands/InstallCommand.tsx";
+
+const QUICK_START: [string, string?][] = [
+  ["drenv install", "     # download DragonRuby (asks which tier you own)"],
+  ["drenv new my-game", " # scaffold a project on that version"],
+  ["cd my-game"],
+  ["drenv run", "         # launch it"],
+];
+
+const FEATURES = [
+  {
+    title: "Every tier, side by side",
+    desc:
+      "Standard from itch.io, indie and pro from dragonruby.org. Install them all — they coexist, and each project picks the one it needs.",
+  },
+  {
+    title: "Projects in one command",
+    desc:
+      "drenv new scaffolds a game on your newest install. drenv use switches it, drenv run launches it — dependencies and all.",
+  },
+  {
+    title: "Dependencies, vendored",
+    desc:
+      "Declare libraries in drenv.toml and drenv resolves, locks, and vendors them into your game — reproducibly, Bundler-style.",
+  },
+];
 
 export default function Home() {
-  const copied = useSignal(false);
-  const installCommand = useSignal('curl -fsSL drenv.org/install.sh | bash');
-  const osLabel = useSignal('');
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const ua = navigator.userAgent || '';
-      const platform = navigator.platform || '';
-      const isWindows = /windows/i.test(ua) || /win/i.test(platform);
-
-      if (isWindows) {
-        installCommand.value = 'irm https://drenv.org/install.ps1 | iex';
-        osLabel.value = 'Windows (PowerShell)';
-      } else {
-        osLabel.value = 'macOS / Linux';
-      }
-    }
-  }, []);
-
-  const copyToClipboard = async () => {
-    try {
-      await navigator.clipboard.writeText(installCommand.value);
-      copied.value = true;
-      setTimeout(() => {
-        copied.value = false;
-      }, 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-    }
-  };
-
   return (
     <div class="bg-zinc-950 text-white">
-      {/* Hero Section - 100dvh */}
-      <section class="relative h-[100dvh] flex flex-col bg-zinc-950 overflow-hidden">
-        {/* Subtle animated dot grid texture (fades near bottom) */}
+      <Nav />
+
+      {/* Hero */}
+      <section class="relative flex min-h-[calc(100dvh-65px)] flex-col overflow-hidden bg-zinc-950">
         <div class="hero-texture absolute inset-0 z-0" aria-hidden="true" />
 
-        {/* Centered Hero Content */}
-        <div class="relative z-10 flex-1 flex items-center justify-center px-6">
+        <div class="relative z-10 flex flex-1 items-center justify-center px-6 py-20">
           <div class="max-w-2xl text-center">
-            {/* DragonRuby logo */}
-            <div class="flex justify-center mb-6">
-              <img 
-                src="/icon.png" 
-                alt="DragonRuby" 
-                class="h-[64px] w-[64px] opacity-90" 
+            <div class="mb-6 flex justify-center">
+              <img
+                src="/icon.png"
+                alt="DragonRuby"
+                class="h-[64px] w-[64px] opacity-90"
               />
             </div>
 
-            <h1 class="text-[92px] sm:text-[110px] font-semibold tracking-[-5.5px] leading-[0.82] mb-3 text-white">
+            <h1 class="mb-3 text-[92px] font-semibold leading-[0.82] tracking-[-5.5px] text-white sm:text-[110px]">
               drenv
             </h1>
 
-            <p class="text-2xl tracking-tight text-white/75 mb-10">
-              DragonRuby Environment Manager
+            <p class="mb-4 text-2xl tracking-tight text-white/75">
+              The DragonRuby Environment Manager
             </p>
 
-            {/* Prominent Install Command */}
-            <div class="mt-6 mx-auto max-w-xl">
-              {osLabel.value && (
-                <div class="mb-1.5 text-xs tracking-[1px] text-white/50 pl-1">
-                  {osLabel.value}
-                </div>
-              )}
-              <div class="group relative rounded-xl bg-zinc-900 border border-white/10 p-1 shadow-2xl">
-                <div class="flex items-center justify-between px-5 py-4 font-mono text-sm bg-black/60 rounded-[10px]">
-                  <code class="select-all text-rose-400 pr-4">
-                    {installCommand.value}
-                  </code>
-                  <button
-                    onClick={copyToClipboard}
-                    class="relative flex h-8 w-8 items-center justify-center rounded-md text-white/60 hover:text-white hover:bg-white/10 active:bg-white/15 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 group/copy"
-                    aria-label="Copy Command"
-                  >
-                    {copied.value ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    )}
+            <p class="mx-auto mb-8 max-w-lg text-white/55">
+              Install DragonRuby, manage versions and tiers, scaffold projects,
+              and vendor your game's dependencies — one small, fast CLI.
+            </p>
 
-                    {/* Tooltip */}
-                    <span class="absolute -top-9 left-1/2 -translate-x-1/2 px-2.5 py-1 text-xs font-medium bg-zinc-800 text-white rounded-md border border-white/10 opacity-0 group-hover/copy:opacity-100 group-focus/copy:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg">
-                      {copied.value ? "Copied!" : "Copy Command"}
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </div>
+            <InstallCommand />
           </div>
         </div>
 
-        {/* Scroll Indicator Arrow - Bottom Center (unaffected by texture fade) */}
         <a
           href="#about"
-          class="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center text-white/40 hover:text-white/70 transition-colors group z-10"
+          class="group absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center text-white/40 transition-colors hover:text-white/70"
           aria-label="Scroll to learn more"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="w-5 h-5 group-hover:translate-y-0.5 transition-transform"
+            class="h-5 w-5 transition-transform group-hover:translate-y-0.5"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.25" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2.25"
+              d="M19 14l-7 7m0 0l-7-7m7 7V3"
+            />
           </svg>
         </a>
       </section>
 
-      {/* About / What is drenv Section */}
-      <section id="about" class="max-w-3xl mx-auto px-6 pt-20 pb-24 text-center">
-        <div class="text-rose-500 text-xs tracking-[3px] mb-3">SIMPLE. RELIABLE. FAMILIAR.</div>
-        <h2 class="text-4xl font-semibold tracking-tight mb-6">
-          drenv is the <span class="text-white/90">DragonRuby Environment Manager</span>.
+      {/* What is drenv */}
+      <section
+        id="about"
+        class="mx-auto max-w-3xl px-6 pb-24 pt-20 text-center"
+      >
+        <div class="mb-3 text-xs tracking-[3px] text-rose-500">
+          SIMPLE. RELIABLE. FAMILIAR.
+        </div>
+        <h2 class="mb-6 text-4xl font-semibold tracking-tight">
+          Everything around your <span class="text-white/90">DragonRuby</span>
+          {" "}
+          game.
         </h2>
-        <p class="text-lg text-white/70 leading-relaxed max-w-2xl mx-auto">
-          Multiple DragonRuby versions, global vs per-project, itch.io downloads, and painful PATH management —
-          drenv solves all of it with a tiny, fast CLI that just works.
+        <p class="mx-auto max-w-2xl text-lg leading-relaxed text-white/70">
+          drenv is inspired by rbenv and Bundler. It keeps your DragonRuby
+          installs tidy, your projects reproducible, and your dependencies
+          vendored — on macOS, Linux, and Windows.
         </p>
 
-        <div class="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
-          {[
-            { title: "One-command installs", desc: "curl | bash installs the latest release and sets everything up." },
-            { title: "Switch versions instantly", desc: "drenv global 3.4.0 and every new project uses the right runtime." },
-            { title: "Works everywhere", desc: "macOS, Linux, and Windows. Full native support for PowerShell." },
-          ].map((f, i) => (
-            <div key={i} class="rounded-xl border border-white/10 bg-zinc-900/50 p-6">
-              <div class="font-semibold mb-2">{f.title}</div>
-              <div class="text-sm text-white/60 leading-snug">{f.desc}</div>
+        <div class="mt-10 grid grid-cols-1 gap-4 text-left sm:grid-cols-3">
+          {FEATURES.map((f) => (
+            <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-6">
+              <div class="mb-2 font-semibold">{f.title}</div>
+              <div class="text-sm leading-snug text-white/60">{f.desc}</div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Key Commands Documentation */}
-      <section class="max-w-3xl mx-auto px-6 pt-16 pb-20 border-t border-white/10">
-        <div class="text-rose-500 text-xs tracking-[3px] mb-3 text-center">COMMAND REFERENCE</div>
-        <h2 class="text-4xl font-semibold tracking-tight mb-10 text-center">
-          Key Commands
+      {/* Dependencies showcase */}
+      <section class="mx-auto max-w-3xl border-t border-white/10 px-6 pb-24 pt-16">
+        <div class="mb-3 text-center text-xs tracking-[3px] text-rose-500">
+          BUNDLER, FOR DRAGONRUBY
+        </div>
+        <h2 class="mb-4 text-center text-4xl font-semibold tracking-tight">
+          Dependencies that just work.
         </h2>
+        <p class="mx-auto mb-10 max-w-2xl text-center text-lg leading-relaxed text-white/70">
+          Declare a library, and drenv resolves it, pins it in a lockfile, and
+          vendors it into your game. Commit the lockfile; everyone builds the
+          exact same thing.
+        </p>
 
-        {/* Featured: drenv install */}
-        <div class="mb-10 rounded-2xl border border-white/10 bg-zinc-900/70 p-8">
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4">
-            <code class="font-mono text-2xl text-rose-400">drenv install</code>
-            <span class="inline-block text-[10px] px-2.5 py-px rounded-full bg-rose-500/15 text-rose-400 tracking-[1.5px] font-medium">PRIMARY COMMAND</span>
+        <div class="space-y-4">
+          <div class="rounded-xl border border-white/10 bg-zinc-900/60 p-6">
+            <div class="mb-3 text-xs uppercase tracking-[2px] text-white/50">
+              1 · Add a dependency
+            </div>
+            <Terminal lines={[["drenv add github:Nitemaeric/conjuration"]]} />
           </div>
-
-          <p class="text-lg text-white/80 leading-relaxed mb-6">
-            Downloads and installs the latest DragonRuby GTK directly from your itch.io account.
-          </p>
-
-          <div class="text-white/75 space-y-3 mb-6 text-[15px]">
-            <div class="flex gap-3">
-              <span class="text-rose-400/80 mt-1">•</span>
-              <span>First run securely prompts for your itch.io username/email and password. Credentials are stored in a local encrypted database (never sent anywhere else).</span>
+          <div class="rounded-xl border border-white/10 bg-zinc-900/60 p-6">
+            <div class="mb-3 text-xs uppercase tracking-[2px] text-white/50">
+              2 · Require it once, at the top of{" "}
+              <span class="normal-case text-white/60">mygame/app/main.rb</span>
             </div>
-            <div class="flex gap-3">
-              <span class="text-rose-400/80 mt-1">•</span>
-              <span>Supports two-factor authentication (TOTP). If enabled, you'll be prompted for your 2FA code.</span>
-            </div>
-            <div class="flex gap-3">
-              <span class="text-rose-400/80 mt-1">•</span>
-              <span>Automatically selects the correct build for your platform (Apple Silicon / Intel macOS, Linux x64/arm64, Windows).</span>
-            </div>
-            <div class="flex gap-3">
-              <span class="text-rose-400/80 mt-1">•</span>
-              <span>Registers the downloaded version locally and sets it as your global default (if no global version is configured yet).</span>
-            </div>
-          </div>
-
-          <div class="mt-6">
-            <div class="text-xs uppercase tracking-[2px] text-white/50 mb-2">Usage</div>
-            <div class="font-mono text-sm bg-black border border-white/10 rounded-xl px-6 py-4 text-rose-400">
-              drenv install
-            </div>
-            <p class="mt-3 text-xs text-white/50">Only the standard tier is supported at this time.</p>
+            <pre class="overflow-x-auto rounded-lg border border-white/10 bg-black px-5 py-4 font-mono text-sm text-emerald-300"><code>require 'app/drenv_bundle.rb'</code></pre>
           </div>
         </div>
 
-        {/* Other core commands */}
-        <div class="grid gap-4 sm:grid-cols-2">
-          {[
-            {
-              cmd: "drenv register <path>",
-              desc: "Manually register an existing DragonRuby installation from a .zip file or directory containing the dragonruby executable.",
-            },
-            {
-              cmd: "drenv global [version]",
-              desc: "Set the global DragonRuby version used when creating new projects. Run without arguments to see the current global version.",
-            },
-            {
-              cmd: "drenv versions",
-              desc: "List all installed DragonRuby versions. The active global version is marked with an asterisk (*).",
-            },
-            {
-              cmd: "drenv new <name>",
-              desc: "Create a new DragonRuby project by copying the global version into a fresh directory.",
-            },
-            {
-              cmd: "drenv upgrade",
-              desc: "Download and install the latest release of drenv itself.",
-            },
-          ].map((cmd, i) => (
-            <div key={i} class="rounded-xl border border-white/10 bg-zinc-900/50 p-6">
-              <code class="font-mono text-rose-400 text-[15px]">{cmd.cmd}</code>
-              <p class="mt-3 text-sm text-white/70 leading-snug">{cmd.desc}</p>
-            </div>
-          ))}
-        </div>
-
-        <p class="mt-10 text-center text-sm text-white/50">
-          Full source and additional details available on{" "}
-          <a href="https://github.com/Nitemaeric/drenv" class="underline hover:text-white/70 transition-colors">GitHub</a>.
+        <p class="mt-6 text-center text-sm text-white/55">
+          Then <code class="text-rose-400">drenv run</code>{" "}
+          re-vendors everything and launches. Bump with{" "}
+          <code class="text-rose-400">drenv update</code>, check with{" "}
+          <code class="text-rose-400">drenv outdated</code>.
         </p>
       </section>
 
-      <footer class="border-t border-white/10 py-8 text-center text-xs text-white/40">
-        <p>Built with ❤️ for the DragonRuby community • <a href="https://github.com/Nitemaeric/drenv" class="underline hover:text-white/60">Source on GitHub</a></p>
-      </footer>
+      {/* Quick start */}
+      <section class="mx-auto max-w-3xl border-t border-white/10 px-6 pb-24 pt-16">
+        <div class="mb-3 text-center text-xs tracking-[3px] text-rose-500">
+          GET GOING
+        </div>
+        <h2 class="mb-10 text-center text-4xl font-semibold tracking-tight">
+          Zero to running game.
+        </h2>
+
+        <Terminal lines={QUICK_START} />
+
+        <div class="mt-10 text-center">
+          <a
+            href="/docs"
+            class="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-medium text-zinc-950 transition-colors hover:bg-white/90"
+          >
+            Read the docs <span aria-hidden="true">→</span>
+          </a>
+        </div>
+      </section>
+
+      <Footer />
     </div>
   );
 }
