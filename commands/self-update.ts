@@ -19,7 +19,7 @@ type Asset = {
   browser_download_url: string;
 };
 
-export default async function upgrade() {
+export default async function selfUpdate() {
   console.log(`Current version is ${config.version}`);
   console.log("Checking for updates...");
 

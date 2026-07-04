@@ -25,12 +25,12 @@ export class NoVersionsInstalled extends Error {
   }
 }
 
-export default async function update(options: { version?: string } = {}) {
+export default async function use(version?: string) {
   let dir: string | undefined;
-  if (options.version) {
-    dir = await resolveVersionDir(options.version);
+  if (version) {
+    dir = await resolveVersionDir(version);
     if (!dir) {
-      throw new NotInstalled(options.version);
+      throw new NotInstalled(version);
     }
   } else {
     dir = await latestInstalledVersion();
@@ -40,9 +40,9 @@ export default async function update(options: { version?: string } = {}) {
   }
 
   const label = versionLabel(dir);
-  const answer = prompt(`drenv: Update to version ${label}? Y/n (Y)`) ?? "";
+  const answer = prompt(`drenv: Use version ${label}? Y/n (Y)`) ?? "";
   if (answer.trim().toLowerCase().startsWith("n")) {
-    return "drenv: update cancelled";
+    return "drenv: cancelled";
   }
 
   // Copy the version's files over the current directory, preserving the game.
@@ -56,5 +56,5 @@ export default async function update(options: { version?: string } = {}) {
     );
   }
 
-  return `drenv: Updated to version ${label}`;
+  return `drenv: Now using version ${label}`;
 }

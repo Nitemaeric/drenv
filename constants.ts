@@ -6,4 +6,3 @@ export const binPath = `${homePath}/bin`;
 export const drenvBinPath = `${binPath}/drenv${
   Deno.build.os === "windows" ? ".exe" : ""
 }`;
-export const shell = Deno.env.get("SHELL");

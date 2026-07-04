@@ -8,14 +8,13 @@ import bundle from "./commands/bundle.ts";
 import changelog from "./commands/changelog.ts";
 import global from "./commands/global.ts";
 import install from "./commands/install.ts";
-import update from "./commands/update.ts";
+import use from "./commands/use.ts";
 import newCommand from "./commands/new.ts";
 import publish from "./commands/publish.ts";
 import register from "./commands/register.ts";
 import remove from "./commands/remove.ts";
 import run from "./commands/run.ts";
-import setup from "./commands/setup.ts";
-import upgrade from "./commands/upgrade.ts";
+import selfUpdate from "./commands/self-update.ts";
 import versions from "./commands/versions.ts";
 
 import { getLatestDrenvVersion } from "./utils/latest-drenv-version.ts";
@@ -32,7 +31,7 @@ const printDrenvUpdateNotice = async () => {
 
   if (greaterThan(latestParsed, currentParsed)) {
     console.log(
-      `drenv update available. \`drenv upgrade\` to install v${latest}`,
+      `drenv update available. \`drenv self-update\` to install v${latest}`,
     );
   }
 };
@@ -60,6 +59,11 @@ const actionRunner = (
   };
 };
 
+// Help groupings shown as headings in `drenv --help`.
+const ENGINE = "Engine management:";
+const DEPENDENCIES = "Dependency management:";
+const DRENV = "Managing drenv:";
+
 program
   .name("drenv")
   .description("CLI to manage DragonRuby environments")
@@ -68,21 +72,17 @@ program
   // accept its own `--version <version>` option.
   .enablePositionalOptions();
 
-program
-  .command("setup")
-  .description("Setup your shell profile to use drenv")
-  .action(actionRunner(setup));
+// --- Engine management ------------------------------------------------------
 
 program
-  .command("new")
-  .argument("<name>", "Name of the new project")
+  .command("install")
   .option(
-    "--version <version>",
-    "DragonRuby version to use (defaults to the global version)",
+    "--tier <tier>",
+    "DragonRuby tier: standard, indie, or pro (prompts if unset)",
   )
-  .option("--skip-gitignore", "Don't generate a .gitignore in the new project")
-  .description("Create a new DragonRuby project")
-  .action(actionRunner(newCommand));
+  .description("Install the latest version of DragonRuby GTK")
+  .helpGroup(ENGINE)
+  .action(actionRunner(install));
 
 program
   .command("register")
@@ -95,13 +95,52 @@ program
   .description(
     "Register a DragonRuby installation. This moves the installation to the $HOME/.drenv directory.",
   )
+  .helpGroup(ENGINE)
   .action(actionRunner(register));
 
 program
-  .command("bundle")
-  .option("--frozen", "Verify against the lockfile instead of updating it")
-  .description("Resolve and vendor dependencies from mygame/drenv.toml")
-  .action(actionRunner(bundle));
+  .command("versions")
+  .description("List out all locally installed versions of DragonRuby")
+  .helpGroup(ENGINE)
+  .action(actionRunner(versions));
+
+program
+  .command("global")
+  .argument("[version]", "Version of DragonRuby to use")
+  .description("Get or set the global version of DragonRuby")
+  .helpGroup(ENGINE)
+  .action(actionRunner(global));
+
+program
+  .command("changelog")
+  .argument("[version]", "Version of DragonRuby to print the changelog for")
+  .description(
+    "Print the changelog entry for a version (defaults to the latest installed)",
+  )
+  .helpGroup(ENGINE)
+  .action(actionRunner(changelog));
+
+program
+  .command("new")
+  .argument("<name>", "Name of the new project")
+  .option(
+    "--version <version>",
+    "DragonRuby version to use (defaults to the global version)",
+  )
+  .option("--skip-gitignore", "Don't generate a .gitignore in the new project")
+  .description("Create a new DragonRuby project")
+  .helpGroup(ENGINE)
+  .action(actionRunner(newCommand));
+
+program
+  .command("use")
+  .argument(
+    "[version]",
+    "Version to switch the project to (defaults to the latest installed)",
+  )
+  .description("Switch the current project to a DragonRuby version")
+  .helpGroup(ENGINE)
+  .action(actionRunner(use));
 
 program
   .command("run")
@@ -110,7 +149,20 @@ program
   .option("--no-watch", "Don't re-sync path dependencies as they change")
   .allowUnknownOption()
   .description("Sync dependencies and launch the project with DragonRuby")
+  .helpGroup(ENGINE)
   .action(actionRunner(run, { skipUpdateCheck: true }));
+
+program
+  .command("publish")
+  .argument("[args...]", "Arguments forwarded to dragonruby-publish")
+  .allowUnknownOption()
+  .description(
+    "Verify dependencies against the lockfile, then publish with dragonruby-publish",
+  )
+  .helpGroup(ENGINE)
+  .action(actionRunner(publish, { skipUpdateCheck: true }));
+
+// --- Dependency management --------------------------------------------------
 
 program
   .command("add")
@@ -130,63 +182,29 @@ program
   .option("--branch <branch>", "Branch to track (github/git)")
   .option("--ref <ref>", "Commit or ref to pin (github/git)")
   .description("Add a dependency to mygame/drenv.toml and vendor it")
+  .helpGroup(DEPENDENCIES)
   .action(actionRunner(add));
 
 program
   .command("remove")
   .argument("<name>", "Name of the dependency to remove")
   .description("Remove a dependency from mygame/drenv.toml")
+  .helpGroup(DEPENDENCIES)
   .action(actionRunner(remove));
 
 program
-  .command("publish")
-  .argument("[args...]", "Arguments forwarded to dragonruby-publish")
-  .allowUnknownOption()
-  .description(
-    "Verify dependencies against the lockfile, then publish with dragonruby-publish",
-  )
-  .action(actionRunner(publish, { skipUpdateCheck: true }));
+  .command("bundle")
+  .option("--frozen", "Verify against the lockfile instead of updating it")
+  .description("Resolve and vendor dependencies from mygame/drenv.toml")
+  .helpGroup(DEPENDENCIES)
+  .action(actionRunner(bundle));
+
+// --- Managing drenv ---------------------------------------------------------
 
 program
-  .command("global")
-  .argument("[version]", "Version of DragonRuby to use")
-  .description("Get or set the global version of DragonRuby")
-  .action(actionRunner(global));
-
-program
-  .command("update")
-  .option(
-    "--version <version>",
-    "DragonRuby version to update to (defaults to the latest installed)",
-  )
-  .description("Update the current project to a DragonRuby version")
-  .action(actionRunner(update));
-
-program
-  .command("changelog")
-  .argument("[version]", "Version of DragonRuby to print the changelog for")
-  .description(
-    "Print the changelog entry for a version (defaults to the latest installed)",
-  )
-  .action(actionRunner(changelog));
-
-program
-  .command("versions")
-  .description("List out all locally installed versions of DragonRuby")
-  .action(actionRunner(versions));
-
-program
-  .command("upgrade")
-  .description("Upgrade the version of drenv")
-  .action(actionRunner(upgrade, { skipUpdateCheck: true }));
-
-program
-  .command("install")
-  .option(
-    "--tier <tier>",
-    "DragonRuby tier: standard, indie, or pro (prompts if unset)",
-  )
-  .description("Install the latest version of DragonRuby GTK")
-  .action(actionRunner(install));
+  .command("self-update")
+  .description("Update drenv itself to the latest version")
+  .helpGroup(DRENV)
+  .action(actionRunner(selfUpdate, { skipUpdateCheck: true }));
 
 program.parse();
