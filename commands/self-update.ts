@@ -2,6 +2,7 @@ import { greaterThan, parse } from "@std/semver";
 
 import config from "../deno.json" with { type: "json" };
 import { drenvBinPath } from "../constants.ts";
+import { installBinary } from "../utils/install-binary.ts";
 
 type Asset = {
   url: string;
@@ -34,8 +35,6 @@ export default async function selfUpdate() {
   if (greaterThan(remoteVersion, localVersion)) {
     console.log(`New version found: ${data.tag_name}`);
 
-    const file = await Deno.open(drenvBinPath, { write: true, create: true });
-
     const targetAsset = data.assets.find((asset: Asset) =>
       asset.name.includes(Deno.build.target)
     );
@@ -49,10 +48,7 @@ export default async function selfUpdate() {
         throw new Error("Could not download the new version");
       }
 
-      await downloadResponse.body.pipeTo(file.writable);
-      if (Deno.build.os !== "windows") {
-        await Deno.chmod(drenvBinPath, 0o755);
-      }
+      await installBinary(downloadResponse.body, drenvBinPath);
 
       console.log(`Upgraded to ${data.tag_name}`);
     } else {
