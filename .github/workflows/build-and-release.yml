@@ -21,7 +21,7 @@ jobs:
     runs-on: ${{ matrix.os.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Deno
         uses: denoland/setup-deno@v2
         with:
@@ -54,7 +54,7 @@ jobs:
       - test
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Deno
         uses: denoland/setup-deno@v2
         with:
@@ -79,7 +79,7 @@ jobs:
           ./builds/drenv --version
           ./builds/drenv --help > /dev/null
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.os.name }}
           path: ${{ startsWith(matrix.os.runner, 'windows') && 'builds/drenv.exe' || 'builds/drenv' }}
@@ -93,7 +93,7 @@ jobs:
       - build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Verify the tag is on main
@@ -104,7 +104,7 @@ jobs:
             exit 1
           fi
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: builds
       - name: Rename files for release
