@@ -119,5 +119,5 @@ Run `drenv <command> --help` for flags and details.
 
 ---
 
-Built with [Deno](https://deno.com). Tested on macOS (Apple Silicon) with
-DragonRuby 5.32, 6.3, 6.4, 6.18, and 7.11.
+Built with [Deno](https://deno.com). Tested on macOS (Apple Silicon) and
+Windows 11 with DragonRuby 5.32, 6.3, 6.4, 6.18, 7.11, and 7.13.
