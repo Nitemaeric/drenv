@@ -87,6 +87,10 @@ program
 program
   .command("register")
   .argument("<path>", "Path to a fresh DragonRuby directory")
+  .option(
+    "--tier <tier>",
+    "Tier this install belongs to: standard, indie, or pro (default standard)",
+  )
   .summary("Register a DragonRuby installation")
   .description(
     "Register a DragonRuby installation. This moves the installation to the $HOME/.drenv directory.",

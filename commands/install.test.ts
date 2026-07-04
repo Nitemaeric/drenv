@@ -1,7 +1,8 @@
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals, assertThrows } from "@std/assert";
 
-import { matchesTier, validateTier } from "./install.ts";
+import { matchesTier } from "./install.ts";
+import { validateTier } from "../utils/tier.ts";
 
 describe("validateTier", () => {
   it("accepts the known tiers, case-insensitively", () => {

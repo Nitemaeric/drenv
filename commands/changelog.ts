@@ -1,30 +1,8 @@
 import { exists } from "@std/fs";
 
 import { versionsPath } from "../constants.ts";
-
-const compareVersionsDesc = (first: string, second: string) => {
-  const [firstMajor, firstMinor] = first.split(".").map(Number);
-  const [secondMajor, secondMinor] = second.split(".").map(Number);
-
-  if (firstMajor === secondMajor) {
-    return secondMinor - firstMinor;
-  }
-
-  return secondMajor - firstMajor;
-};
-
-const findLatestInstalledVersion = async (): Promise<string | undefined> => {
-  if (!await exists(versionsPath)) {
-    return undefined;
-  }
-
-  const directories = await Array.fromAsync(Deno.readDir(versionsPath));
-
-  return directories
-    .filter((entry) => entry.isDirectory)
-    .map((entry) => entry.name)
-    .toSorted(compareVersionsDesc)[0];
-};
+import { latestInstalledVersion } from "../utils/installed-versions.ts";
+import { parseVersionDir, splitVersionInput } from "../utils/tier.ts";
 
 const extractEntry = (
   changelog: string,
@@ -52,19 +30,22 @@ const extractEntry = (
 };
 
 export default async function changelog(version?: string) {
-  const sourceVersion = await findLatestInstalledVersion();
+  const sourceDir = await latestInstalledVersion();
 
-  if (!sourceVersion) {
+  if (!sourceDir) {
     throw new Error("drenv: no DragonRuby versions installed");
   }
 
-  const changelogPath = `${versionsPath}/${sourceVersion}/CHANGELOG-CURR.txt`;
+  const changelogPath = `${versionsPath}/${sourceDir}/CHANGELOG-CURR.txt`;
 
   if (!await exists(changelogPath)) {
     throw new Error(`drenv: changelog not found at ${changelogPath}`);
   }
 
-  const target = version ?? sourceVersion;
+  // Changelog headers use bare version numbers; strip any tier from the input.
+  const target = version
+    ? splitVersionInput(version).version
+    : parseVersionDir(sourceDir).version;
   const content = await Deno.readTextFile(changelogPath);
   const entry = extractEntry(content, target);
 

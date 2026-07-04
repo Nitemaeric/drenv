@@ -1,41 +1,26 @@
 import { readVersion } from "../utils/read-version.ts";
 import { getLatestAvailableVersion } from "../utils/latest-version.ts";
-import { versionsPath } from "../constants.ts";
-
-const compareVersions = (first: string, second: string) => {
-  const [firstMajor, firstMinor] = first.split(".").map(Number);
-  const [secondMajor, secondMinor] = second.split(".").map(Number);
-
-  if (firstMajor === secondMajor) {
-    return firstMinor - secondMinor;
-  }
-
-  return firstMajor - secondMajor;
-};
+import {
+  compareVersions,
+  installedVersions,
+} from "../utils/installed-versions.ts";
+import { parseVersionDir, versionLabel } from "../utils/tier.ts";
 
 export default async function versions() {
-  let directories: Deno.DirEntry[] = [];
-  try {
-    directories = await Array.fromAsync(Deno.readDir(versionsPath));
-  } catch (_err) {
-    // No versions installed yet
-  }
-  directories = directories.toSorted((first, second) =>
-    compareVersions(second.name, first.name)
-  );
+  const directories = await installedVersions();
 
+  // The project only records a bare version number, so mark every tier of it.
   const currentVersion = await readVersion("./CHANGELOG-CURR.txt");
 
-  for await (const directory of directories) {
-    if (directory.name == currentVersion) {
-      console.log("* " + directory.name);
-    } else {
-      console.log("  " + directory.name);
-    }
+  for (const name of directories) {
+    const marker = parseVersionDir(name).version === currentVersion
+      ? "* "
+      : "  ";
+    console.log(marker + versionLabel(name));
   }
 
   const latestAvailable = await getLatestAvailableVersion();
-  const latestInstalled = directories[0]?.name;
+  const latestInstalled = directories[0];
 
   if (
     latestAvailable && latestInstalled &&

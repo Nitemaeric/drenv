@@ -1,6 +1,7 @@
-import { copy, exists } from "@std/fs";
+import { copy } from "@std/fs";
 
 import { versionsPath } from "../constants.ts";
+import { resolveVersionDir } from "../utils/installed-versions.ts";
 
 import global from "./global.ts";
 
@@ -45,10 +46,11 @@ export default async function newCommand(
   options: NewOptions = {},
 ) {
   if (options.version) {
-    if (!await exists(`${versionsPath}/${options.version}`)) {
+    const resolved = await resolveVersionDir(options.version);
+    if (!resolved) {
       throw new NotInstalled(options.version);
     }
-    await copy(`${versionsPath}/${options.version}`, name);
+    await copy(`${versionsPath}/${resolved}`, name);
   } else {
     await copy(`${versionsPath}/${await global()}`, name);
   }
