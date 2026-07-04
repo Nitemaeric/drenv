@@ -8,15 +8,23 @@ installations.
 
 ## Installation
 
-Download the executable for your platform from the
-[releases page](https://github.com/Nitemaeric/drenv/releases), then run:
+Install the latest release with the install script, which downloads the right
+binary for your platform, drops it in `~/.drenv/bin`, and prints the line to add
+to your `$PATH`:
 
 ```sh
-drenv setup
+# macOS / Linux
+curl -fsSL drenv.org/install.sh | bash
 ```
 
-This moves the executable to `~/.drenv/bin` and prints the line to add to your
-shell profile.
+```powershell
+# Windows (PowerShell)
+irm https://drenv.org/install.ps1 | iex
+```
+
+Prefer to do it by hand? Download the executable for your platform from the
+[releases page](https://github.com/Nitemaeric/drenv/releases), move it to
+`~/.drenv/bin`, and add that directory to your `$PATH`.
 
 > [!NOTE]
 > On macOS, if you see a Gatekeeper warning, run:
@@ -26,7 +34,7 @@ shell profile.
 > ```
 
 > [!NOTE]
-> Once installed, keep **drenv** up to date by running `drenv upgrade`.
+> Once installed, keep **drenv** up to date by running `drenv self-update`.
 
 Alternatively, you can build from source:
 
@@ -94,9 +102,8 @@ without arguments prints the current global version.
 A bare version resolves to the highest tier you have installed. So `7.11` picks
 `7.11-pro` if present, then `7.11-indie`, then `7.11` (standard). To pin a tier,
 name it — `7.11-pro`, or `7.11-standard` for the standard build. The same
-resolution applies anywhere a version is accepted (`new --version`,
-`update --version`), and `drenv update` with no version updates to your highest
-installed tier.
+resolution applies anywhere a version is accepted (`new --version`, `use`), and
+`drenv use` with no version switches to your highest installed tier.
 
 ### `drenv versions`
 
@@ -120,12 +127,12 @@ default; pass `--version <version>` for a specific one (tier-resolved, so
 `--version 7.11-pro` works too), or `--skip-gitignore` to skip writing the
 `.gitignore`.
 
-### `drenv update`
+### `drenv use [version]`
 
-Updates the current project to a registered DragonRuby version, preserving the
-`mygame` directory. Defaults to the latest installed version; pass
-`--version <version>` for a specific one (tier-resolved). Asks for confirmation
-first.
+Switches the current project to a registered DragonRuby version, preserving the
+`mygame` directory. Defaults to the latest installed version; pass a version
+(tier-resolved, e.g. `drenv use 7.11-pro`) for a specific one. Asks for
+confirmation first.
 
 ### `drenv run [args...]`
 
@@ -225,14 +232,10 @@ so many libraries (a `lib/<name>.rb` layout) work with zero configuration.
 
 ## Managing drenv
 
-### `drenv setup`
+### `drenv self-update`
 
-Moves the **drenv** executable to `~/.drenv/bin` and shows instructions for
-adding it to your `$PATH`.
-
-### `drenv upgrade`
-
-Downloads and installs the latest version of **drenv**.
+Downloads and installs the latest version of **drenv**, replacing the current
+binary in place.
 
 ---
 

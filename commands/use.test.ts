@@ -2,17 +2,17 @@ import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { ensureDir, exists } from "@std/fs";
 
-import update, { NotInstalled } from "./update.ts";
+import use, { NotInstalled } from "./use.ts";
 import { versionsPath } from "../constants.ts";
 
-describe("update", () => {
+describe("use", () => {
   let cwd: string;
   let tmp: string;
   let realPrompt: typeof globalThis.prompt;
 
   beforeEach(async () => {
     cwd = Deno.cwd();
-    tmp = await Deno.makeTempDir({ prefix: "drenv-update-" });
+    tmp = await Deno.makeTempDir({ prefix: "drenv-use-" });
     Deno.chdir(tmp);
     realPrompt = globalThis.prompt;
 
@@ -37,18 +37,18 @@ describe("update", () => {
     await Deno.remove(`${versionsPath}/97.02`, { recursive: true });
   });
 
-  it("updates to the latest installed version by default", async () => {
+  it("uses the latest installed version by default", async () => {
     globalThis.prompt = () => "";
 
-    await update();
+    await use();
 
     assertEquals(await Deno.readTextFile("./CHANGELOG-CURR.txt"), "* 97.02");
   });
 
-  it("updates to a specific version with --version", async () => {
+  it("uses a specific version when given one", async () => {
     globalThis.prompt = () => "";
 
-    await update({ version: "97.01" });
+    await use("97.01");
 
     assertEquals(await Deno.readTextFile("./CHANGELOG-CURR.txt"), "* 97.01");
   });
@@ -56,9 +56,9 @@ describe("update", () => {
   it("cancels when the user answers no", async () => {
     globalThis.prompt = () => "n";
 
-    const result = await update({ version: "97.01" });
+    const result = await use("97.01");
 
-    assertEquals(result, "drenv: update cancelled");
+    assertEquals(result, "drenv: cancelled");
     assert(!await exists("./CHANGELOG-CURR.txt"));
   });
 
@@ -66,7 +66,7 @@ describe("update", () => {
     globalThis.prompt = () => "";
 
     await assertRejects(
-      () => update({ version: "0.0" }),
+      () => use("0.0"),
       NotInstalled,
       "version '0.0' not installed",
     );

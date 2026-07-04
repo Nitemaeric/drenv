@@ -24,7 +24,8 @@
     "jsr:@zip-js/zip-js@*": "2.7.54",
     "jsr:@zip-js/zip-js@^2.7.54": "2.7.54",
     "jsr:@zip-js/zip-js@^2.7.57": "2.8.24",
-    "npm:commander@^13.1.0": "13.1.0",
+    "npm:commander@*": "14.0.3",
+    "npm:commander@14": "14.0.3",
     "npm:ora@*": "8.1.1",
     "npm:ora@^8.1.1": "8.1.1"
   },
@@ -127,8 +128,8 @@
     "cli-spinners@2.9.2": {
       "integrity": "sha512-ywqV+5MmyL4E7ybXgKys4DugZbX0FC6LnwrhjuykIjnK9k8OQacQ7axGKnjDXWNhns0xot3bZI5h55H8yo9cJg=="
     },
-    "commander@13.1.0": {
-      "integrity": "sha512-/rFeCpNJQbhSZjGVwO9RFV3xPqbnERS8MmIQzCtD/zl6gpJuV/bMLuN92oG3F7d8oDEHHRrujSXNUr8fpjntKw=="
+    "commander@14.0.3": {
+      "integrity": "sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw=="
     },
     "emoji-regex@10.4.0": {
       "integrity": "sha512-EC+0oUMY1Rqm4O6LLrgjtYDvcVYTy7chDnM4Q7030tP4Kwj3u/pR6gP9ygnp2CJMK5Gq+9Q2oqmrFJAz01DXjw=="
@@ -218,7 +219,7 @@
       "jsr:@std/testing@^1.0.9",
       "jsr:@std/toml@^1.0.11",
       "jsr:@zip-js/zip-js@^2.7.57",
-      "npm:commander@^13.1.0",
+      "npm:commander@14",
       "npm:ora@^8.1.1"
     ]
   }

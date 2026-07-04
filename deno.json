@@ -20,7 +20,7 @@
     "@std/testing": "jsr:@std/testing@^1.0.9",
     "@std/toml": "jsr:@std/toml@^1.0.11",
     "@zip-js/zip-js": "jsr:@zip-js/zip-js@^2.7.57",
-    "commander": "npm:commander@^13.1.0",
+    "commander": "npm:commander@^14.0.0",
     "ora": "npm:ora@^8.1.1"
   }
 }
