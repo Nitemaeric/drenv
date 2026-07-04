@@ -247,6 +247,7 @@ async function installFromItch(kv: Deno.Kv, spinner: Ora): Promise<string> {
 
 /** Downloads a subscription tier (indie/pro) from dragonruby.org. */
 async function installFromDragonRubyOrg(
+  kv: Deno.Kv,
   tier: Tier,
   spinner: Ora,
 ): Promise<string> {
@@ -255,19 +256,40 @@ async function installFromDragonRubyOrg(
     throw new Error(`drenv: unsupported platform (${Deno.build.target})`);
   }
 
-  spinner.stop();
-  const email = prompt("dragonruby.org email:") ?? "";
-  const password = promptSecret("dragonruby.org password:") ?? "";
-  spinner.start(`Fetching ${tier} download...`);
-
   // Basic-auth endpoint returns the download URL as its body.
   const endpoint =
     `https://dragonruby.org/api/download_${tier}_subscription_${platform}`;
-  const res = await fetch(endpoint, {
-    headers: { "Authorization": `Basic ${btoa(`${email}:${password}`)}` },
-  });
 
-  if (!res.ok) {
+  // Reuse the cached email; only ever prompt for the password. On an auth
+  // failure, forget the email and re-prompt both once so a stale email can't
+  // trap the user.
+  let email = (await kv.get<string>(["dragonruby", "email"])).value ??
+    undefined;
+  let downloadUrl: string | undefined;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    spinner.stop();
+    if (!email) email = (prompt("dragonruby.org email:") ?? "").trim();
+    const password =
+      promptSecret(`dragonruby.org password${email ? ` (${email})` : ""}:`) ??
+        "";
+    spinner.start(`Fetching ${tier} download...`);
+
+    const res = await fetch(endpoint, {
+      headers: { "Authorization": `Basic ${btoa(`${email}:${password}`)}` },
+    });
+
+    if (res.ok) {
+      downloadUrl = (await res.text()).trim();
+      await kv.set(["dragonruby", "email"], email);
+      break;
+    }
+
+    if ((res.status === 401 || res.status === 403) && attempt === 0) {
+      email = undefined;
+      continue;
+    }
+
     throw new Error(
       res.status === 401 || res.status === 403
         ? "drenv: dragonruby.org login failed — check your email and password"
@@ -275,7 +297,9 @@ async function installFromDragonRubyOrg(
     );
   }
 
-  const downloadUrl = (await res.text()).trim();
+  if (!downloadUrl) {
+    throw new Error("drenv: dragonruby.org login failed");
+  }
 
   spinner.text = `Downloading ${tier} DragonRuby...`;
   const fileRes = await fetch(downloadUrl);
@@ -304,7 +328,7 @@ export default async function install(options: { tier?: string } = {}) {
     try {
       const message = tier === "standard"
         ? await installFromItch(kv, spinner)
-        : await installFromDragonRubyOrg(tier, spinner);
+        : await installFromDragonRubyOrg(kv, tier, spinner);
 
       const version = message.replace("drenv: Installed ", "");
 
