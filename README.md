@@ -96,6 +96,7 @@ Run `drenv <command> --help` for flags and details.
 | ----------------- | ---------------------------------------------- |
 | `new <name>`      | Scaffold a new project                         |
 | `use [version]`   | Switch the current project's version           |
+| `version`         | Print the current project's version            |
 | `run [args...]`   | Vendor dependencies and launch the game        |
 | `publish [args…]` | Verify dependencies, then `dragonruby-publish` |
 

@@ -1,15 +1,23 @@
 export const readFirstLine = async (path: string) => {
   const file = await Deno.open(path);
 
-  const buffer = new Uint8Array(1);
-  const decoder = new TextDecoder();
-  let content = "";
+  try {
+    const buffer = new Uint8Array(1);
+    const decoder = new TextDecoder();
+    let content = "";
 
-  while (decoder.decode(buffer) != "\n") {
-    await file.read(buffer);
+    while (true) {
+      const read = await file.read(buffer);
+      if (read === null) break; // EOF — file has no trailing newline
 
-    content += decoder.decode(buffer);
+      const char = decoder.decode(buffer.subarray(0, read));
+      if (char === "\n") break;
+
+      content += char;
+    }
+
+    return content;
+  } finally {
+    file.close();
   }
-
-  return content;
 };
