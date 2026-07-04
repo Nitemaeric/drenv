@@ -8,6 +8,7 @@ import bundle from "./commands/bundle.ts";
 import changelog from "./commands/changelog.ts";
 import install from "./commands/install.ts";
 import use from "./commands/use.ts";
+import version from "./commands/version.ts";
 import newCommand from "./commands/new.ts";
 import publish from "./commands/publish.ts";
 import register from "./commands/register.ts";
@@ -148,6 +149,12 @@ program
   .description("Switch the current project to a DragonRuby version")
   .helpGroup(PROJECT)
   .action(actionRunner(use));
+
+program
+  .command("version")
+  .description("Print the current project's DragonRuby version")
+  .helpGroup(PROJECT)
+  .action(actionRunner(version, { skipUpdateCheck: true }));
 
 program
   .command("run")

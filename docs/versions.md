@@ -68,3 +68,9 @@ Switches the current project to a registered version, preserving the `mygame`
 directory. Defaults to your highest installed tier; pass a version
 (tier-resolved, e.g. `drenv use 7.11-pro`) for a specific one. Asks for
 confirmation first.
+
+### `drenv version`
+
+Prints the DragonRuby version the current project is on (read from its
+`CHANGELOG-CURR.txt`). Works from anywhere inside the project. This is the
+project's engine version — `drenv --version` prints drenv's own version.
