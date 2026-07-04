@@ -11,6 +11,7 @@ import use from "./commands/use.ts";
 import newCommand from "./commands/new.ts";
 import publish from "./commands/publish.ts";
 import register from "./commands/register.ts";
+import uninstall from "./commands/uninstall.ts";
 import remove from "./commands/remove.ts";
 import run from "./commands/run.ts";
 import selfUpdate from "./commands/self-update.ts";
@@ -97,6 +98,17 @@ program
   )
   .helpGroup(ENGINE)
   .action(actionRunner(register));
+
+program
+  .command("uninstall")
+  .argument(
+    "<version>",
+    "Version to remove (tier-resolved, e.g. 7.11 or 7.11-pro)",
+  )
+  .option("-y, --yes", "Skip the confirmation prompt")
+  .description("Remove an installed DragonRuby version")
+  .helpGroup(ENGINE)
+  .action(actionRunner(uninstall));
 
 program
   .command("versions")
