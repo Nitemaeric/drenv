@@ -82,12 +82,13 @@ Run `drenv <command> --help` for flags and details.
 
 **Engine management**
 
-| Command           | Description                                     |
-| ----------------- | ----------------------------------------------- |
-| `install`         | Download the latest DragonRuby (prompts a tier) |
-| `register <path>` | Register a local install (a `.zip` or a folder) |
-| `versions`        | List installed versions                         |
-| `changelog [ver]` | Print a version's changelog                     |
+| Command               | Description                                     |
+| --------------------- | ----------------------------------------------- |
+| `install`             | Download the latest DragonRuby (prompts a tier) |
+| `register <path>`     | Register a local install (a `.zip` or a folder) |
+| `uninstall <version>` | Remove an installed version                     |
+| `versions`            | List installed versions                         |
+| `changelog [ver]`     | Print a version's changelog                     |
 
 **Project management**
 

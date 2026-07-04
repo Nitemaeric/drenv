@@ -39,6 +39,14 @@ containing the `dragonruby` executable — handy if you already have a copy
 downloaded. Pass `--tier indie|pro` to file it under that tier (defaults to
 `standard`).
 
+### `drenv uninstall <version>`
+
+Removes an installed version from `~/.drenv/versions`. The version is
+tier-resolved (`7.11` picks your highest tier, `7.11-pro` pins it), and drenv
+prompts for confirmation showing exactly what will be removed; pass `-y`/`--yes`
+to skip the prompt (for scripts). Existing projects are unaffected — they carry
+their own copy of DragonRuby.
+
 ### `drenv versions`
 
 Lists all installed versions, with the current project's version marked and each
