@@ -1,4 +1,5 @@
 import { copy } from "@std/fs";
+import { join } from "@std/path";
 
 import { versionsPath } from "../constants.ts";
 import {
@@ -6,6 +7,7 @@ import {
   resolveVersionDir,
 } from "../utils/installed-versions.ts";
 import { versionLabel } from "../utils/tier.ts";
+import { findProject } from "../utils/project.ts";
 
 export class NotInstalled extends Error {
   version: string;
@@ -26,6 +28,10 @@ export class NoVersionsInstalled extends Error {
 }
 
 export default async function use(version?: string) {
+  // Fail fast if we're not in a project, before prompting — otherwise `use`
+  // would dump DragonRuby's files into whatever directory you happen to be in.
+  const project = await findProject();
+
   let dir: string | undefined;
   if (version) {
     dir = await resolveVersionDir(version);
@@ -45,13 +51,13 @@ export default async function use(version?: string) {
     return "drenv: cancelled";
   }
 
-  // Copy the version's files over the current directory, preserving the game.
+  // Copy the version's files over the project root, preserving the game.
   for await (const item of Deno.readDir(`${versionsPath}/${dir}`)) {
     if (item.name === "mygame") continue;
 
     await copy(
       `${versionsPath}/${dir}/${item.name}`,
-      `./${item.name}`,
+      join(project.root, item.name),
       { overwrite: true },
     );
   }

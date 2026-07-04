@@ -15,12 +15,20 @@ const FIXTURE = `* 99.99
 `;
 
 describe("changelog", () => {
+  const ARCHIVED = `* 99.50
+** [Bugfix] Fixed an archived thing.
+`;
+
   beforeAll(async () => {
     await ensureDir(`${versionsPath}/99.99`);
     await ensureDir(`${versionsPath}/99.98`);
     await Deno.writeTextFile(
       `${versionsPath}/99.99/CHANGELOG-CURR.txt`,
       FIXTURE,
+    );
+    await Deno.writeTextFile(
+      `${versionsPath}/99.99/CHANGELOG-PREV.txt`,
+      ARCHIVED,
     );
     await Deno.writeTextFile(
       `${versionsPath}/99.98/CHANGELOG-CURR.txt`,
@@ -62,6 +70,15 @@ describe("changelog", () => {
       assertEquals(
         result,
         "* 99.97\n** [Bugfix] Fixed an even older thing.",
+      );
+    });
+
+    it("finds an entry archived in CHANGELOG-PREV.txt", async () => {
+      const result = await changelog("99.50");
+
+      assertEquals(
+        result,
+        "* 99.50\n** [Bugfix] Fixed an archived thing.",
       );
     });
 

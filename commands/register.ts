@@ -15,46 +15,49 @@ export default async function register(
   const tier = validateTier(options.tier ?? "standard");
   const zipOrDirectory = await Deno.open(path);
 
-  let fromZip = false;
+  // Zips are extracted into a throwaway temp directory (not the cwd) and cleaned
+  // up afterward. A directory register moves the given path in place.
+  let extractDir: string | undefined;
   if (extname(path) === ".zip") {
-    path = await extractZip(zipOrDirectory);
-    fromZip = true;
+    extractDir = await Deno.makeTempDir({ prefix: "drenv-register-" });
+    path = await extractZip(zipOrDirectory, extractDir);
   }
 
-  const directory = await Deno.open(path);
-  const directoryInfo = await directory.stat();
+  try {
+    const directory = await Deno.open(path);
+    const directoryInfo = await directory.stat();
 
-  if (!directoryInfo.isDirectory) {
-    throw new Error(
-      "drenv: <path> must be a directory with the dragonruby executable or a zip file",
-    );
+    if (!directoryInfo.isDirectory) {
+      throw new Error(
+        "drenv: <path> must be a directory with the dragonruby executable or a zip file",
+      );
+    }
+
+    const version = await versionCommand(path);
+    const dirName = versionDirName(version, tier);
+
+    await ensureDir(versionsPath);
+
+    // Overwrite an existing install of the same version and tier. Different
+    // tiers of the same version get distinct directory names (`7.11`,
+    // `7.11-pro`), so they coexist rather than clobbering each other.
+    await move(path, `${versionsPath}/${dirName}`, { overwrite: true });
+
+    return `drenv: Installed ${dirName}`;
+  } finally {
+    if (extractDir) {
+      await Deno.remove(extractDir, { recursive: true }).catch(() => {});
+    }
   }
-
-  const version = await versionCommand(path);
-  const dirName = versionDirName(version, tier);
-
-  await ensureDir(versionsPath);
-
-  // Overwrite an existing install of the same version and tier. Different tiers
-  // of the same version get distinct directory names (`7.11`, `7.11-pro`), so
-  // they coexist rather than clobbering each other.
-  await move(path, `${versionsPath}/${dirName}`, { overwrite: true });
-
-  // Only the zip path stages files under ./tmp; a directory register doesn't.
-  if (fromZip) {
-    await Deno.remove("./tmp", { recursive: true }).catch(() => {});
-  }
-
-  return `drenv: Installed ${versionDirName(version, tier)}`;
 }
 
-const extractZip = async (zip: Deno.FsFile) => {
+const extractZip = async (zip: Deno.FsFile, baseDir: string) => {
   let directoryPath!: string;
 
   for await (
     const entry of zip.readable.pipeThrough(new ZipReaderStream())
   ) {
-    const fullPath = resolve("./tmp/", entry.filename);
+    const fullPath = resolve(baseDir, entry.filename);
 
     if (entry.directory) {
       directoryPath ??= fullPath;
