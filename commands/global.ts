@@ -1,6 +1,7 @@
 import { exists } from "@std/fs";
 
-import { homePath, versionsPath } from "../constants.ts";
+import { homePath } from "../constants.ts";
+import { resolveVersionDir } from "../utils/installed-versions.ts";
 
 export class NotInstalled extends Error {
   version: string;
@@ -29,11 +30,14 @@ export default function global(version: string | undefined = undefined) {
 }
 
 const setGlobalVersion = async (version: string) => {
-  if (!await exists(`${versionsPath}/${version}`)) {
+  // Bare input (`7.11`) resolves to standard, then pro, then indie; an explicit
+  // suffix (`7.11-pro`) pins the tier. Store the resolved directory name.
+  const resolved = await resolveVersionDir(version);
+  if (!resolved) {
     throw new NotInstalled(version);
   }
 
-  return Deno.writeTextFile(`${homePath}/.dragonruby-version`, version);
+  return Deno.writeTextFile(`${homePath}/.dragonruby-version`, resolved);
 };
 
 const getGlobalVersion = async () => {

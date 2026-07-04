@@ -5,12 +5,10 @@ import ora, { type Ora } from "ora";
 import global, { NoGlobalVersion } from "./global.ts";
 import register from "./register.ts";
 import { homePath } from "../constants.ts";
+import { type Tier, validateTier } from "../utils/tier.ts";
 
 const DRAGONRUBY_GAME_ID = 404609;
 const ITCH_API = "https://api.itch.io";
-
-export type Tier = "standard" | "indie" | "pro";
-const TIERS: Tier[] = ["standard", "indie", "pro"];
 
 // Token found in the itch upload filename for each platform, e.g.
 // `dragonruby-gtk-macos.zip` or `dragonruby-gtk-pro-linux-amd64.zip`.
@@ -20,14 +18,6 @@ const platformToken: Record<string, string> = {
   "aarch64-apple-darwin": "macos",
   "x86_64-unknown-linux-gnu": "linux-amd64",
   "aarch64-unknown-linux-gnu": "linux-arm64",
-};
-
-export const validateTier = (tier: string): Tier => {
-  const value = tier.trim().toLowerCase();
-  if ((TIERS as string[]).includes(value)) return value as Tier;
-  throw new Error(
-    `drenv: unknown tier '${tier}' (expected ${TIERS.join(", ")})`,
-  );
 };
 
 /** Resolves the tier from the flag, the persisted choice, or an interactive prompt. */
@@ -313,7 +303,7 @@ async function installFromDragonRubyOrg(
   await fileRes.body.pipeTo(file.writable);
 
   spinner.text = "Installing...";
-  return register(destPath);
+  return register(destPath, { tier });
 }
 
 export default async function install(options: { tier?: string } = {}) {
@@ -330,14 +320,16 @@ export default async function install(options: { tier?: string } = {}) {
         ? await installFromItch(kv, spinner)
         : await installFromDragonRubyOrg(kv, tier, spinner);
 
-      const version = message.replace("drenv: Installed ", "");
+      // The register message ends with the directory name, which already
+      // encodes the tier (e.g. `7.11-pro`).
+      const dirName = message.replace("drenv: Installed ", "");
 
       let setAsGlobal = false;
       try {
         await global();
       } catch (err) {
         if (err instanceof NoGlobalVersion) {
-          await global(version);
+          await global(dirName);
           setAsGlobal = true;
         }
       }
@@ -346,7 +338,7 @@ export default async function install(options: { tier?: string } = {}) {
       await kv.set(["dragonruby", "tier"], tier);
 
       spinner.succeed(
-        `${message} (${tier}${setAsGlobal ? ", set as global" : ""})`,
+        `${message}${setAsGlobal ? " (set as global)" : ""}`,
       );
     } catch (err) {
       spinner.fail((err as Error).message);

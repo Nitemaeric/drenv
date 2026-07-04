@@ -74,24 +74,38 @@ Downloads and installs the latest DragonRuby GTK. Prompts for your tier the
 first time and remembers it; pass `--tier standard|indie|pro` to choose or
 switch. Standard downloads from itch.io, indie and pro from dragonruby.org.
 
+Tiers are installed side by side. Each version+tier gets its own directory —
+standard keeps the bare version (`7.11`), while indie and pro are suffixed
+(`7.11-pro`, `7.11-indie`) — so installing pro doesn't clobber your standard
+copy of the same version.
+
 ### `drenv register <path>`
 
 Registers a local DragonRuby installation manually. The path can be a `.zip`
 file or a directory containing the `dragonruby` executable. Useful if you
-already have a copy downloaded.
+already have a copy downloaded. Pass `--tier indie|pro` to file it under that
+tier (defaults to `standard`).
 
 ### `drenv global [version]`
 
 Sets the global DragonRuby version used when creating new projects. Running
 without arguments prints the current global version.
 
+A bare version resolves to the highest tier you have installed. So `7.11` picks
+`7.11-pro` if present, then `7.11-indie`, then `7.11` (standard). To pin a tier,
+name it — `7.11-pro`, or `7.11-standard` for the standard build. The same
+resolution applies anywhere a version is accepted (`new --version`,
+`update --version`), and `drenv update` with no version updates to your highest
+installed tier.
+
 ### `drenv versions`
 
-Lists all registered versions, with the current local version marked:
+Lists all registered versions, with the current local version marked and each
+tier labelled:
 
 ```
-  6.4
-* 6.3
+  7.11 Pro
+* 6.4
   5.32
 ```
 
@@ -102,14 +116,16 @@ Lists all registered versions, with the current local version marked:
 Creates a new DragonRuby project by copying a registered version into a new
 directory, and writes a project `.gitignore` (covering the DragonRuby binaries,
 `builds/`, `tmp/`, `logs/`, docs, and samples). Uses the global version by
-default; pass `--version <version>` for a specific one, or `--skip-gitignore` to
-skip writing the `.gitignore`.
+default; pass `--version <version>` for a specific one (tier-resolved, so
+`--version 7.11-pro` works too), or `--skip-gitignore` to skip writing the
+`.gitignore`.
 
 ### `drenv update`
 
 Updates the current project to a registered DragonRuby version, preserving the
 `mygame` directory. Defaults to the latest installed version; pass
-`--version <version>` for a specific one. Asks for confirmation first.
+`--version <version>` for a specific one (tier-resolved). Asks for confirmation
+first.
 
 ### `drenv run [args...]`
 
