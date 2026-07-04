@@ -1,5 +1,4 @@
 import { promptSecret } from "@std/cli";
-import { ensureDir } from "@std/fs";
 import ora, { type Ora } from "ora";
 
 import register from "./register.ts";
@@ -187,7 +186,6 @@ async function downloadUpload(
     throw new Error(`drenv: download failed with status ${fileRes.status}`);
   }
 
-  await ensureDir("./tmp");
   const file = await Deno.create(destPath);
   await fileRes.body.pipeTo(file.writable);
 }
@@ -222,16 +220,16 @@ async function installFromItch(kv: Deno.Kv, spinner: Ora): Promise<string> {
   const upload = await getUpload(apiKey, downloadKeyId, "standard");
 
   spinner.text = `Downloading ${upload.filename}...`;
-  await ensureDir("./tmp");
-  await downloadUpload(
-    apiKey,
-    upload.id,
-    downloadKeyId,
-    `./tmp/${upload.filename}`,
-  );
+  const tmp = await Deno.makeTempDir({ prefix: "drenv-download-" });
+  try {
+    const zipPath = `${tmp}/${upload.filename}`;
+    await downloadUpload(apiKey, upload.id, downloadKeyId, zipPath);
 
-  spinner.text = "Installing...";
-  return register(`./tmp/${upload.filename}`);
+    spinner.text = "Installing...";
+    return await register(zipPath);
+  } finally {
+    await Deno.remove(tmp, { recursive: true }).catch(() => {});
+  }
 }
 
 /** Downloads a subscription tier (indie/pro) from dragonruby.org. */
@@ -296,13 +294,17 @@ async function installFromDragonRubyOrg(
     throw new Error(`drenv: download failed with status ${fileRes.status}`);
   }
 
-  await ensureDir("./tmp");
-  const destPath = `./tmp/dragonruby-${tier}-${platform}.zip`;
-  const file = await Deno.create(destPath);
-  await fileRes.body.pipeTo(file.writable);
+  const tmp = await Deno.makeTempDir({ prefix: "drenv-download-" });
+  try {
+    const destPath = `${tmp}/dragonruby-${tier}-${platform}.zip`;
+    const file = await Deno.create(destPath);
+    await fileRes.body.pipeTo(file.writable);
 
-  spinner.text = "Installing...";
-  return register(destPath, { tier });
+    spinner.text = "Installing...";
+    return await register(destPath, { tier });
+  } finally {
+    await Deno.remove(tmp, { recursive: true }).catch(() => {});
+  }
 }
 
 export default async function install(options: { tier?: string } = {}) {

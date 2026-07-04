@@ -3,6 +3,7 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { ensureDir, exists } from "@std/fs";
 
 import use, { NotInstalled } from "./use.ts";
+import { ProjectNotFound } from "../utils/project.ts";
 import { versionsPath } from "../constants.ts";
 
 describe("use", () => {
@@ -14,6 +15,8 @@ describe("use", () => {
     cwd = Deno.cwd();
     tmp = await Deno.makeTempDir({ prefix: "drenv-use-" });
     Deno.chdir(tmp);
+    // `use` requires a project — a directory containing `mygame/`.
+    await ensureDir(`${tmp}/mygame`);
     realPrompt = globalThis.prompt;
 
     // Use high versions so these fixtures are reliably the "latest" installed.
@@ -70,5 +73,18 @@ describe("use", () => {
       NotInstalled,
       "version '0.0' not installed",
     );
+  });
+
+  it("rejects when not inside a project", async () => {
+    globalThis.prompt = () => "";
+    const bare = await Deno.makeTempDir({ prefix: "drenv-notproj-" });
+    Deno.chdir(bare);
+
+    try {
+      await assertRejects(() => use("97.01"), ProjectNotFound);
+    } finally {
+      Deno.chdir(tmp);
+      await Deno.remove(bare, { recursive: true });
+    }
   });
 });

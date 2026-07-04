@@ -29,6 +29,9 @@ const extractEntry = (
   return lines.slice(startIndex, endIndex).join("\n").trimEnd();
 };
 
+const readIfExists = async (path: string): Promise<string> =>
+  (await exists(path)) ? await Deno.readTextFile(path) : "";
+
 export default async function changelog(version?: string) {
   const sourceDir = await latestInstalledVersion();
 
@@ -36,17 +39,22 @@ export default async function changelog(version?: string) {
     throw new Error("drenv: no DragonRuby versions installed");
   }
 
-  const changelogPath = `${versionsPath}/${sourceDir}/CHANGELOG-CURR.txt`;
+  // DragonRuby splits its changelog across CURR (recent) and PREV (archived);
+  // read both so entries for older versions still resolve.
+  const base = `${versionsPath}/${sourceDir}`;
+  const content = [
+    await readIfExists(`${base}/CHANGELOG-CURR.txt`),
+    await readIfExists(`${base}/CHANGELOG-PREV.txt`),
+  ].join("\n");
 
-  if (!await exists(changelogPath)) {
-    throw new Error(`drenv: changelog not found at ${changelogPath}`);
+  if (!content.trim()) {
+    throw new Error(`drenv: changelog not found in ${base}`);
   }
 
   // Changelog headers use bare version numbers; strip any tier from the input.
   const target = version
     ? splitVersionInput(version).version
     : parseVersionDir(sourceDir).version;
-  const content = await Deno.readTextFile(changelogPath);
   const entry = extractEntry(content, target);
 
   if (!entry) {
