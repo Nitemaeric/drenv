@@ -1,9 +1,11 @@
 import { copy } from "@std/fs";
 
 import { versionsPath } from "../constants.ts";
-import { resolveVersionDir } from "../utils/installed-versions.ts";
-
-import global from "./global.ts";
+import {
+  latestInstalledVersion,
+  resolveVersionDir,
+} from "../utils/installed-versions.ts";
+import { versionLabel } from "../utils/tier.ts";
 
 export class NotInstalled extends Error {
   version: string;
@@ -18,7 +20,7 @@ export class NotInstalled extends Error {
 
 const PROJECT_GITIGNORE = `.DS_Store
 
-# DragonRuby binaries (re-added by drenv new / drenv update)
+# DragonRuby binaries (re-added by drenv new / drenv use)
 dragonruby
 dragonruby.exe
 dragonruby-publish
@@ -45,17 +47,25 @@ export default async function newCommand(
   name: string,
   options: NewOptions = {},
 ) {
-  if (options.version) {
-    const resolved = await resolveVersionDir(options.version);
-    if (!resolved) {
+  // Default to the newest installed version; --version picks a specific one.
+  const dir = options.version
+    ? await resolveVersionDir(options.version)
+    : await latestInstalledVersion();
+
+  if (!dir) {
+    if (options.version) {
       throw new NotInstalled(options.version);
     }
-    await copy(`${versionsPath}/${resolved}`, name);
-  } else {
-    await copy(`${versionsPath}/${await global()}`, name);
+    throw new Error(
+      "drenv: no DragonRuby versions installed — run `drenv install` first",
+    );
   }
+
+  await copy(`${versionsPath}/${dir}`, name);
 
   if (!options.skipGitignore) {
     await Deno.writeTextFile(`${name}/.gitignore`, PROJECT_GITIGNORE);
   }
+
+  return `drenv: Created ${name} (${versionLabel(dir)})`;
 }

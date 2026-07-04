@@ -47,11 +47,10 @@ cd my-game
 drenv run            # launch it
 ```
 
-Your first install becomes the global default, so `new` just works. Have more
+`drenv new` uses your newest install by default, so it just works. Have more
 than one version or tier? They live side by side — `drenv versions` lists them,
-`drenv global <version>` sets the default, and `drenv use <version>` switches
-the current project. See [Managing versions](docs/versions.md) for tiers and
-version resolution.
+and both `new --version <v>` and `drenv use <v>` take a specific one. See
+[Managing versions](docs/versions.md) for tiers and version resolution.
 
 > [!NOTE]
 > `drenv install` needs a DragonRuby purchase — [itch.io](https://itch.io) for
@@ -83,13 +82,12 @@ Run `drenv <command> --help` for flags and details.
 
 **Engine management**
 
-| Command            | Description                                     |
-| ------------------ | ----------------------------------------------- |
-| `install`          | Download the latest DragonRuby (prompts a tier) |
-| `register <path>`  | Register a local install (a `.zip` or a folder) |
-| `versions`         | List installed versions                         |
-| `global [version]` | Get or set the default version                  |
-| `changelog [ver]`  | Print a version's changelog                     |
+| Command           | Description                                     |
+| ----------------- | ----------------------------------------------- |
+| `install`         | Download the latest DragonRuby (prompts a tier) |
+| `register <path>` | Register a local install (a `.zip` or a folder) |
+| `versions`        | List installed versions                         |
+| `changelog [ver]` | Print a version's changelog                     |
 
 **Project management**
 

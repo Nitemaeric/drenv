@@ -40,6 +40,21 @@ describe("new", () => {
     });
   });
 
+  describe("without a version", () => {
+    it("defaults to the latest installed version", async () => {
+      // 99.99 is the highest fixture, so it's the latest installed.
+      const tmp = await Deno.makeTempDir({ prefix: "drenv-new-" });
+      const dest = join(tmp, "proj");
+
+      const message = await newCommand(dest);
+
+      assert(await exists(join(dest, "marker.txt")));
+      assertStringIncludes(message ?? "", "Created");
+      assertStringIncludes(message ?? "", "99.99");
+      await Deno.remove(tmp, { recursive: true });
+    });
+  });
+
   describe(".gitignore", () => {
     it("generates a project .gitignore by default", async () => {
       const tmp = await Deno.makeTempDir({ prefix: "drenv-new-" });
