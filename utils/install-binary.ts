@@ -1,28 +1,11 @@
-/** Writes a downloaded binary to `dest`, replacing any existing file. */
-export const installBinary = async (
-  body: ReadableStream<Uint8Array>,
-  dest: string,
-): Promise<void> => {
-  if (Deno.build.os === "windows") {
-    await installBinaryWindows(body, dest);
-    return;
-  }
-
-  const file = await Deno.open(dest, {
-    write: true,
-    create: true,
-    truncate: true,
-  });
-  await body.pipeTo(file.writable);
-  await Deno.chmod(dest, 0o755);
-};
-
 /**
- * Windows cannot overwrite an executable that is currently running (os error 32).
- * Download to a staging file, rename the live binary aside, then promote the
- * staging file into place — renaming an in-use `.exe` is allowed.
+ * Writes a downloaded binary to `dest`, replacing any existing file.
+ *
+ * Cannot truncate a running executable in place (Windows os error 32, Linux
+ * ETXTBSY). Download to a staging file, rename the live binary aside, then
+ * promote the staging file — renaming an in-use binary is allowed.
  */
-export const installBinaryWindows = async (
+export const installBinary = async (
   body: ReadableStream<Uint8Array>,
   dest: string,
 ): Promise<void> => {
@@ -35,6 +18,10 @@ export const installBinaryWindows = async (
     truncate: true,
   });
   await body.pipeTo(file.writable);
+
+  if (Deno.build.os !== "windows") {
+    await Deno.chmod(staging, 0o755);
+  }
 
   try {
     await Deno.remove(backup);
@@ -56,3 +43,6 @@ export const installBinaryWindows = async (
     // This process may still be executing the backed-up binary.
   }
 };
+
+/** @deprecated Use {@link installBinary} — kept for existing tests. */
+export const installBinaryWindows = installBinary;

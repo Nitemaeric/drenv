@@ -66,4 +66,16 @@ describe("installBinary", () => {
       assertEquals(mode & 0o111, 0o111);
     }
   });
+
+  it("replaces an existing file without writing to it in place", async () => {
+    const dest = join(
+      tmp,
+      Deno.build.os === "windows" ? "drenv.exe" : "drenv",
+    );
+    await Deno.writeTextFile(dest, "old");
+
+    await installBinary(streamFrom("new"), dest);
+
+    assertEquals(await Deno.readTextFile(dest), "new");
+  });
 });
