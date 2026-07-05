@@ -22,7 +22,10 @@ export type Timeline = {
 };
 
 /** Assigns each script line a start/typeEnd frame and totals the duration. */
-export const buildTimeline = (script: ScriptLine[]): Timeline => {
+export const buildTimeline = (
+  script: ScriptLine[],
+  opts: { endHold?: number } = {},
+): Timeline => {
   let cursor = LEAD_IN;
   const lines: TimedLine[] = [];
 
@@ -40,5 +43,5 @@ export const buildTimeline = (script: ScriptLine[]): Timeline => {
     }
   }
 
-  return { lines, durationInFrames: Math.ceil(cursor + END_HOLD) };
+  return { lines, durationInFrames: Math.ceil(cursor + (opts.endHold ?? END_HOLD)) };
 };
