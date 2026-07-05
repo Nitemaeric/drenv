@@ -43,6 +43,3 @@ export const installBinary = async (
     // This process may still be executing the backed-up binary.
   }
 };
-
-/** @deprecated Use {@link installBinary} — kept for existing tests. */
-export const installBinaryWindows = installBinary;
