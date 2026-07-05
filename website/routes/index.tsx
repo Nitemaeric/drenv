@@ -86,6 +86,30 @@ export default function Home() {
         </a>
       </section>
 
+      {/* Demo reel */}
+      <section class="mx-auto max-w-4xl px-6 pt-24 pb-8">
+        <div class="mb-8 text-center">
+          <div class="mb-3 text-xs tracking-[3px] text-rose-500">
+            SEE IT IN ACTION
+          </div>
+          <h2 class="text-4xl font-semibold tracking-tight">
+            One CLI, from install to ship.
+          </h2>
+        </div>
+        <div class="overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
+          <video
+            src="/sizzle.mp4"
+            poster="/sizzle-poster.png"
+            autoplay
+            muted
+            loop
+            playsinline
+            controls
+            class="block h-auto w-full"
+          />
+        </div>
+      </section>
+
       {/* What is drenv */}
       <section
         id="about"
