@@ -8,11 +8,13 @@
     "render:quickstart": "remotion render src/index.ts QuickStart out/quick-start.mp4",
     "render:dependencies": "remotion render src/index.ts Dependencies out/dependencies.mp4",
     "render:tiers": "remotion render src/index.ts Tiers out/tiers.mp4",
-    "render": "npm run render:quickstart && npm run render:dependencies && npm run render:tiers",
+    "render:sizzle": "remotion render src/index.ts Sizzle out/sizzle.mp4",
+    "render": "npm run render:quickstart && npm run render:dependencies && npm run render:tiers && npm run render:sizzle",
     "upgrade": "remotion upgrade"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.0",
+    "@remotion/transitions": "^4.0.484",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "remotion": "^4.0.0"
