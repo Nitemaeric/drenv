@@ -3,6 +3,7 @@ import { extname, resolve } from "@std/path";
 import { configure, ZipReaderStream } from "@zip-js/zip-js";
 
 import { versionsPath } from "../constants.ts";
+import { makeDrenvTempDir } from "../utils/temp.ts";
 import { versionCommand } from "../utils/version.ts";
 import { validateTier, versionDirName } from "../utils/tier.ts";
 
@@ -19,7 +20,7 @@ export default async function register(
   // up afterward. A directory register moves the given path in place.
   let extractDir: string | undefined;
   if (extname(path) === ".zip") {
-    extractDir = await Deno.makeTempDir({ prefix: "drenv-register-" });
+    extractDir = await makeDrenvTempDir("drenv-register-");
     path = await extractZip(zipOrDirectory, extractDir);
   }
 

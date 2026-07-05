@@ -3,6 +3,7 @@ import ora, { type Ora } from "ora";
 
 import register from "./register.ts";
 import { homePath } from "../constants.ts";
+import { makeDrenvTempDir } from "../utils/temp.ts";
 import { type Tier, validateTier } from "../utils/tier.ts";
 
 const DRAGONRUBY_GAME_ID = 404609;
@@ -190,13 +191,15 @@ async function downloadUpload(
   await fileRes.body.pipeTo(file.writable);
 }
 
-// dragonruby.org's platform token, e.g. download_pro_subscription_linux_amd64.
-const drOrgPlatform: Record<string, string> = {
+// dragonruby.org's platform token in download_<tier>_subscription_<token>.
+// Link keys like `pro_linux_amd64` map to `download_*_subscription_linux` — see
+// https://dragonruby.org/api.
+export const drOrgPlatform: Record<string, string> = {
   "x86_64-pc-windows-msvc": "windows",
   "x86_64-apple-darwin": "mac",
   "aarch64-apple-darwin": "mac",
-  "x86_64-unknown-linux-gnu": "linux_amd64",
-  "aarch64-unknown-linux-gnu": "linux_arm64",
+  "x86_64-unknown-linux-gnu": "linux",
+  "aarch64-unknown-linux-gnu": "pi",
 };
 
 /** Downloads the standard tier from itch.io. Returns the register message. */
@@ -220,7 +223,7 @@ async function installFromItch(kv: Deno.Kv, spinner: Ora): Promise<string> {
   const upload = await getUpload(apiKey, downloadKeyId, "standard");
 
   spinner.text = `Downloading ${upload.filename}...`;
-  const tmp = await Deno.makeTempDir({ prefix: "drenv-download-" });
+  const tmp = await makeDrenvTempDir("drenv-download-");
   try {
     const zipPath = `${tmp}/${upload.filename}`;
     await downloadUpload(apiKey, upload.id, downloadKeyId, zipPath);
@@ -294,7 +297,7 @@ async function installFromDragonRubyOrg(
     throw new Error(`drenv: download failed with status ${fileRes.status}`);
   }
 
-  const tmp = await Deno.makeTempDir({ prefix: "drenv-download-" });
+  const tmp = await makeDrenvTempDir("drenv-download-");
   try {
     const destPath = `${tmp}/dragonruby-${tier}-${platform}.zip`;
     const file = await Deno.create(destPath);

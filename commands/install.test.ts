@@ -1,7 +1,7 @@
 import { describe, it } from "@std/testing/bdd";
 import { assertEquals, assertThrows } from "@std/assert";
 
-import { matchesTier } from "./install.ts";
+import { drOrgPlatform, matchesTier } from "./install.ts";
 import { validateTier } from "../utils/tier.ts";
 
 describe("validateTier", () => {
@@ -13,6 +13,16 @@ describe("validateTier", () => {
 
   it("throws on an unknown tier", () => {
     assertThrows(() => validateTier("ultimate"), Error, "unknown tier");
+  });
+});
+
+describe("drOrgPlatform", () => {
+  it("maps Linux ARM64 to the pi endpoint", () => {
+    assertEquals(drOrgPlatform["aarch64-unknown-linux-gnu"], "pi");
+  });
+
+  it("maps Linux x86_64 to the linux endpoint", () => {
+    assertEquals(drOrgPlatform["x86_64-unknown-linux-gnu"], "linux");
   });
 });
 
