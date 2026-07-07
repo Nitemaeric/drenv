@@ -99,12 +99,18 @@ changes hot-reload into the running game — handy when developing a library
 alongside it. Pass `--no-watch` to turn that off (`--frozen` skips it too).
 Extra arguments are forwarded to the `dragonruby` binary.
 
+### `drenv build [args...]`
+
+Packages the project locally without publishing — verifies dependencies against
+the lockfile (like `--frozen`), then runs `dragonruby-publish --only-package` on
+`mygame`, producing the platform packages in `builds/`. Extra arguments are
+forwarded. Handy in CI or for testing a packaged build.
+
 ### `drenv publish [args...]`
 
 Verifies dependencies against the lockfile (like `--frozen`), then runs
-`dragonruby-publish` on `mygame`, forwarding any arguments. `drenv publish`
-ships to itch.io and `drenv publish --package` packages locally — always
-shipping exactly what's locked.
+`dragonruby-publish` on `mygame`, forwarding any arguments — always shipping
+exactly what's locked. Use `drenv build` when you only want the local packages.
 
 ## Publishing a library
 

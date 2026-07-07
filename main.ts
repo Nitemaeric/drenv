@@ -13,6 +13,7 @@ import install from "./commands/install.ts";
 import use from "./commands/use.ts";
 import version from "./commands/version.ts";
 import newCommand from "./commands/new.ts";
+import build from "./commands/build.ts";
 import publish from "./commands/publish.ts";
 import register from "./commands/register.ts";
 import uninstall from "./commands/uninstall.ts";
@@ -168,6 +169,16 @@ program
   .description("Sync dependencies and launch the project with DragonRuby")
   .helpGroup(PROJECT)
   .action(actionRunner(run, { skipUpdateCheck: true }));
+
+program
+  .command("build")
+  .argument("[args...]", "Arguments forwarded to dragonruby-publish")
+  .allowUnknownOption()
+  .description(
+    "Package the project locally (dragonruby-publish --only-package)",
+  )
+  .helpGroup(PROJECT)
+  .action(actionRunner(build, { skipUpdateCheck: true }));
 
 program
   .command("publish")

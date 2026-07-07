@@ -98,6 +98,7 @@ Run `drenv <command> --help` for flags and details.
 | `use [version]`   | Switch the current project's version           |
 | `version`         | Print the current project's version            |
 | `run [args...]`   | Vendor dependencies and launch the game        |
+| `build [args…]`   | Package locally (`dragonruby-publish` only)    |
 | `publish [args…]` | Verify dependencies, then `dragonruby-publish` |
 
 **Dependency management**
