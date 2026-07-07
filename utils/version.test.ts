@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertRejects } from "@std/assert";
 import { ensureDir } from "@std/fs";
-import { join } from "@std/path";
 
 import { dragonrubyBinary, versionCommand } from "./version.ts";
 
@@ -38,7 +37,7 @@ describe("versionCommand", () => {
 
     await Deno.writeTextFile(
       binary,
-      '#!/bin/sh\necho 7.11',
+      "#!/bin/sh\necho 7.11",
     );
     await Deno.chmod(binary, 0o755);
 

@@ -22,6 +22,12 @@ export type PackageSpec = {
   root?: string;
   /** Entrypoint to require, relative to `root`. */
   entrypoint?: string;
+  /**
+   * Extra paths (files or directories), relative to the repo root, to vendor
+   * alongside the library — e.g. sprites/sounds/data that live outside `root`.
+   * Copied into `vendor/<name>/<path>`, preserving their names.
+   */
+  include?: string[];
 };
 
 export type Manifest = {
