@@ -47,19 +47,23 @@ export const resolveEntrypoint = async (
   staging: string,
   name: string,
   override?: string,
-): Promise<{ root: string; entrypoint: string }> => {
-  if (override) return { root: ".", entrypoint: override };
-
+): Promise<{ root: string; entrypoint: string; include: string[] }> => {
+  // A library declares its asset paths in `[package].include`, regardless of how
+  // the entrypoint itself resolves.
   const pkg = await readPackage(staging);
+  const include = pkg?.include ?? [];
+
+  if (override) return { root: ".", entrypoint: override, include };
+
   if (pkg?.entrypoint) {
-    return { root: pkg.root ?? ".", entrypoint: pkg.entrypoint };
+    return { root: pkg.root ?? ".", entrypoint: pkg.entrypoint, include };
   }
 
   if (await exists(join(staging, "lib", `${name}.rb`))) {
-    return { root: "lib", entrypoint: `${name}.rb` };
+    return { root: "lib", entrypoint: `${name}.rb`, include };
   }
   if (await exists(join(staging, `${name}.rb`))) {
-    return { root: ".", entrypoint: `${name}.rb` };
+    return { root: ".", entrypoint: `${name}.rb`, include };
   }
 
   throw new Error(
@@ -78,7 +82,11 @@ export const stageIntoVendor = async (
   name: string,
   override?: string,
 ): Promise<string> => {
-  const { root, entrypoint } = await resolveEntrypoint(staging, name, override);
+  const { root, entrypoint, include } = await resolveEntrypoint(
+    staging,
+    name,
+    override,
+  );
 
   const source = root === "." ? staging : join(staging, root);
   if (!await exists(source)) {
@@ -90,6 +98,24 @@ export const stageIntoVendor = async (
   const dest = vendorDir(ctx, name);
   await Deno.remove(dest, { recursive: true }).catch(() => {});
   await copyTree(source, dest);
+
+  // Vendor any declared asset paths (repo-root-relative) alongside the code, so
+  // libraries can ship sprites/sounds/data that live outside `root`.
+  for (const rel of include) {
+    if (rel.startsWith("/") || rel.split(/[\\/]/).includes("..")) {
+      throw new Error(
+        `drenv: invalid include path '${rel}' in dependency '${name}' (must be relative, no '..')`,
+      );
+    }
+
+    const from = join(staging, rel);
+    if (!await exists(from)) {
+      throw new Error(
+        `drenv: include path '${rel}' not found in dependency '${name}'`,
+      );
+    }
+    await copyTree(from, join(dest, rel));
+  }
 
   if (!await exists(join(dest, entrypoint))) {
     throw new Error(

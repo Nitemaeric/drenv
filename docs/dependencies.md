@@ -116,7 +116,17 @@ flags:
 [package]
 root = "lib"                  # only this directory is vendored (default ".")
 entrypoint = "conjuration.rb" # the file to require, relative to root
+include = ["sprites", "data"] # extra paths to vendor (see below)
 ```
 
 Without it, drenv falls back to convention — `lib/<name>.rb`, then `<name>.rb` —
 so many libraries (a `lib/<name>.rb` layout) work with zero configuration.
+
+### Shipping assets (sprites, sounds, data)
+
+`root` scopes vendoring to your code (e.g. `lib/`), so assets that live
+_outside_ it aren't vendored. List them in `include` — paths relative to your
+repo root — and drenv copies each into `vendor/<name>/<path>`, preserving its
+name. A library with `lib/dragon_input.rb` and a top-level `sprites/` would use
+`include = ["sprites"]`, and its sprites land at
+`mygame/vendor/dragon_input/sprites/…` for the game to load.
