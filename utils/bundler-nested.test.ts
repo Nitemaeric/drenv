@@ -358,13 +358,12 @@ describe("bundler (nested dependencies)", () => {
 
     await reconcile(project);
 
-    // Restored at the locked revision, not upstream HEAD.
-    assertEquals(
-      await Deno.readTextFile(
-        join(project.mygame, "vendor", "timer", "timer.rb"),
-      ),
-      "# timer\n",
+    // Restored at the locked revision, not upstream HEAD. Normalize line
+    // endings: git's autocrlf checks files out with \r\n on Windows runners.
+    const restored = await Deno.readTextFile(
+      join(project.mygame, "vendor", "timer", "timer.rb"),
     );
+    assertEquals(restored.replaceAll("\r\n", "\n"), "# timer\n");
   });
 
   it("drops orphaned packages when a parent stops depending on them", async () => {
