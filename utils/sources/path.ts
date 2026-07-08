@@ -2,13 +2,16 @@ import { exists } from "@std/fs";
 import { resolve } from "@std/path";
 
 import type { DependencySpec } from "../manifest.ts";
-import type { LockedDependency } from "../lockfile.ts";
-import { stageIntoVendor, type VendorContext } from "./resolve.ts";
+import {
+  stageIntoVendor,
+  type VendorContext,
+  type VendorResult,
+} from "./resolve.ts";
 
 export const vendorPath = async (
   spec: DependencySpec,
   ctx: VendorContext,
-): Promise<LockedDependency> => {
+): Promise<VendorResult> => {
   const source = resolve(ctx.manifestDir, spec.path!);
 
   if (!await exists(source)) {
@@ -32,8 +35,11 @@ export const vendorPath = async (
   if (staged) ctx.log(`drenv: vendored ${spec.name} (path:${spec.path})`);
 
   return {
-    name: spec.name,
-    source: `path:${spec.path}`,
-    require: [require],
+    locked: {
+      name: spec.name,
+      source: `path:${spec.path}`,
+      require: [require],
+    },
+    staged,
   };
 };

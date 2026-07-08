@@ -67,8 +67,11 @@ export const watchPathDeps = async (
       const spec = specs.get(name);
       if (!spec) continue;
       try {
-        await vendorDependency(spec, ctx);
-        log(`drenv: re-synced ${name}`);
+        // A watch event can fire without a content change (e.g. a metadata
+        // touch, or our own vendor write landing under a watched source tree).
+        // Only announce a re-sync when the copy actually happened.
+        const { staged } = await vendorDependency(spec, ctx);
+        if (staged) log(`drenv: re-synced ${name}`);
       } catch (error) {
         log(`drenv: failed to re-sync ${name} — ${(error as Error).message}`);
       }

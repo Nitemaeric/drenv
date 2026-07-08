@@ -1,7 +1,11 @@
 import type { DependencySpec } from "../manifest.ts";
-import type { LockedDependency } from "../lockfile.ts";
 import { treeDigest } from "../integrity.ts";
-import { stageIntoVendor, type VendorContext, vendorDir } from "./resolve.ts";
+import {
+  stageIntoVendor,
+  type VendorContext,
+  vendorDir,
+  type VendorResult,
+} from "./resolve.ts";
 
 const git = async (
   args: string[],
@@ -45,7 +49,7 @@ export const gitRef = async (
 export const vendorGit = async (
   spec: DependencySpec,
   ctx: VendorContext,
-): Promise<LockedDependency> => {
+): Promise<VendorResult> => {
   const url = spec.git!;
   const named = spec.tag ?? spec.branch;
 
@@ -98,11 +102,14 @@ export const vendorGit = async (
     ctx.log(`drenv: vendored ${spec.name} (git:${url})`);
 
     return {
-      name: spec.name,
-      source: `git:${url}`,
-      ref: sha || undefined,
-      require: [require],
-      integrity: await treeDigest(vendorDir(ctx, spec.name)),
+      locked: {
+        name: spec.name,
+        source: `git:${url}`,
+        ref: sha || undefined,
+        require: [require],
+        integrity: await treeDigest(vendorDir(ctx, spec.name)),
+      },
+      staged: true,
     };
   } finally {
     await Deno.remove(tmp, { recursive: true }).catch(() => {});

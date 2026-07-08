@@ -42,7 +42,7 @@ export const bundle = async (
 
   const dependencies: LockedDependency[] = [];
   for (const spec of manifest.dependencies) {
-    dependencies.push(await vendorDependency(spec, ctx));
+    dependencies.push((await vendorDependency(spec, ctx)).locked);
   }
 
   const lock: Lockfile = {
@@ -141,7 +141,7 @@ export const updateDependency = async (
 
     // Re-resolve the target, and anything not yet locked; reuse the rest.
     if (spec.name === name || !locked) {
-      dependencies.push(await vendorDependency(spec, ctx));
+      dependencies.push((await vendorDependency(spec, ctx)).locked);
     } else {
       dependencies.push(locked);
     }

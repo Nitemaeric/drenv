@@ -3,6 +3,7 @@ import { join } from "@std/path";
 import { parse } from "@std/toml";
 
 import type { PackageSpec } from "../manifest.ts";
+import type { LockedDependency } from "../lockfile.ts";
 import { copyTree } from "../copy-tree.ts";
 import { filesetDigest, type FilesetPart } from "../integrity.ts";
 
@@ -13,6 +14,13 @@ export type VendorContext = {
   manifestDir: string;
   /** Progress logger. */
   log: (message: string) => void;
+};
+
+/** The outcome of vendoring one dependency. */
+export type VendorResult = {
+  locked: LockedDependency;
+  /** False when an up-to-date vendor directory let us skip the copy. */
+  staged: boolean;
 };
 
 /** Absolute path of a dependency's vendor directory. */
