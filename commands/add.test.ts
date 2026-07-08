@@ -58,7 +58,9 @@ describe("add (sticky lock)", () => {
     await ensureDir(join(mygame, "app"));
     await Deno.writeTextFile(
       join(mygame, "drenv.toml"),
-      `[dependencies.frame_timer]\ngit = "${repo}"\n`,
+      // Forward slashes: backslashes are escape characters in TOML strings,
+      // and git accepts forward-slash paths on Windows too.
+      `[dependencies.frame_timer]\ngit = "${repo.replaceAll("\\", "/")}"\n`,
     );
     await Deno.writeTextFile(
       join(mygame, "app", "main.rb"),
