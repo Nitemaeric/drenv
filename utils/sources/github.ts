@@ -5,6 +5,7 @@ import { configure, ZipReaderStream } from "@zip-js/zip-js";
 import type { DependencySpec } from "../manifest.ts";
 import { treeDigest } from "../integrity.ts";
 import {
+  readLibraryDependencies,
   stageIntoVendor,
   type VendorContext,
   vendorDir,
@@ -100,8 +101,12 @@ export const vendorGithub = async (
         ref: sha ?? downloadRef,
         require: [require],
         integrity: await treeDigest(vendorDir(ctx, spec.name)),
+        tag: spec.tag,
+        branch: spec.branch,
+        entrypoint: spec.entrypoint,
       },
       staged: true,
+      dependencies: await readLibraryDependencies(staging),
     };
   } finally {
     await Deno.remove(staging, { recursive: true }).catch(() => {});

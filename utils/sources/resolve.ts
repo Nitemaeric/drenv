@@ -2,7 +2,11 @@ import { exists } from "@std/fs";
 import { join } from "@std/path";
 import { parse } from "@std/toml";
 
-import type { PackageSpec } from "../manifest.ts";
+import {
+  type DependencySpec,
+  type PackageSpec,
+  parseManifest,
+} from "../manifest.ts";
 import type { LockedDependency } from "../lockfile.ts";
 import { copyTree } from "../copy-tree.ts";
 import { filesetDigest, type FilesetPart } from "../integrity.ts";
@@ -21,6 +25,28 @@ export type VendorResult = {
   locked: LockedDependency;
   /** False when an up-to-date vendor directory let us skip the copy. */
   staged: boolean;
+  /** Dependencies the library itself declares in its root drenv.toml. */
+  dependencies: DependencySpec[];
+  /**
+   * Where the library's source tree lives, when it persists past vendoring —
+   * set for path deps only. Used to resolve their relative path children.
+   */
+  sourceDir?: string;
+};
+
+/**
+ * The `[dependencies]` a library declares in its own root `drenv.toml`.
+ * Missing or unparsable manifests yield none, matching `[package]` handling.
+ */
+export const readLibraryDependencies = async (
+  dir: string,
+): Promise<DependencySpec[]> => {
+  try {
+    const text = await Deno.readTextFile(join(dir, "drenv.toml"));
+    return parseManifest(text).dependencies;
+  } catch {
+    return [];
+  }
 };
 
 /** Absolute path of a dependency's vendor directory. */

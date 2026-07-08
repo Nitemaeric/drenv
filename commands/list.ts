@@ -46,7 +46,20 @@ export default async function list() {
     ref: shortRef(
       lock?.dependencies.find((dep) => dep.name === spec.name)?.ref,
     ),
+    via: "",
   }));
+
+  // Transitive dependencies live only in the lock; annotate their parents.
+  for (const dep of lock?.dependencies ?? []) {
+    if (dep.via?.length && !rows.some((row) => row.name === dep.name)) {
+      rows.push({
+        name: dep.name,
+        source: dep.source,
+        ref: shortRef(dep.ref),
+        via: `via ${dep.via.join(", ")}`,
+      });
+    }
+  }
 
   const nameWidth = Math.max(...rows.map((row) => row.name.length));
   const sourceWidth = Math.max(...rows.map((row) => row.source.length));
@@ -55,7 +68,7 @@ export default async function list() {
     console.log(
       `  ${row.name.padEnd(nameWidth)}  ${
         row.source.padEnd(sourceWidth)
-      }  ${row.ref}`,
+      }  ${row.ref}${row.via ? `  ${row.via}` : ""}`,
     );
   }
 }

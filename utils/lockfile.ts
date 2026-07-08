@@ -8,6 +8,13 @@ export type LockedDependency = {
   ref?: string;
   require: string[];
   integrity?: string;
+  /** Names of the dependencies that requested this one; absent = top-level. */
+  via?: string[];
+  /** The declared tag/branch pin, kept so the dep can be re-resolved later. */
+  tag?: string;
+  branch?: string;
+  /** A consumer-declared entrypoint override, kept for lock-based re-fetches. */
+  entrypoint?: string;
 };
 
 export type Lockfile = {
@@ -43,6 +50,10 @@ export const writeLock = async (
     ...(dep.ref ? { ref: dep.ref } : {}),
     require: dep.require,
     ...(dep.integrity ? { integrity: dep.integrity } : {}),
+    ...(dep.via?.length ? { via: dep.via } : {}),
+    ...(dep.tag ? { tag: dep.tag } : {}),
+    ...(dep.branch ? { branch: dep.branch } : {}),
+    ...(dep.entrypoint ? { entrypoint: dep.entrypoint } : {}),
   }));
 
   const body = stringify({

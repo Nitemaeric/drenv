@@ -3,6 +3,7 @@ import { resolve } from "@std/path";
 
 import type { DependencySpec } from "../manifest.ts";
 import {
+  readLibraryDependencies,
   stageIntoVendor,
   type VendorContext,
   type VendorResult,
@@ -39,7 +40,10 @@ export const vendorPath = async (
       name: spec.name,
       source: `path:${spec.path}`,
       require: [require],
+      entrypoint: spec.entrypoint,
     },
     staged,
+    dependencies: await readLibraryDependencies(source),
+    sourceDir: source,
   };
 };
