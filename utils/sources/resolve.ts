@@ -4,6 +4,7 @@ import { parse } from "@std/toml";
 
 import type { PackageSpec } from "../manifest.ts";
 import { copyTree } from "../copy-tree.ts";
+import { filesetDigest, type FilesetPart } from "../integrity.ts";
 
 export type VendorContext = {
   /** Absolute path to the project's `mygame` directory. */
@@ -71,6 +72,23 @@ export const resolveEntrypoint = async (
   );
 };
 
+export type StageOptions = {
+  /**
+   * Skip the remove+copy when the vendor directory already holds a byte-for-byte
+   * copy of the staged fileset. Only meaningful for a mutable source (a path
+   * dep), where the same tree is re-staged on every sync; remote sources land in
+   * a fresh temp dir each fetch and short-circuit earlier via lockfile integrity.
+   */
+  cache?: boolean;
+};
+
+export type StageResult = {
+  /** The require path (relative to `mygame`) for the vendored entrypoint. */
+  require: string;
+  /** False when an up-to-date vendor directory let us skip the copy. */
+  staged: boolean;
+};
+
 /**
  * Mirrors a fetched library's package root into its vendor directory and
  * returns the require path. `staging` is the fetched tree — a temp checkout for
@@ -81,7 +99,8 @@ export const stageIntoVendor = async (
   ctx: VendorContext,
   name: string,
   override?: string,
-): Promise<string> => {
+  options: StageOptions = {},
+): Promise<StageResult> => {
   const { root, entrypoint, include } = await resolveEntrypoint(
     staging,
     name,
@@ -96,6 +115,28 @@ export const stageIntoVendor = async (
   }
 
   const dest = vendorDir(ctx, name);
+  const require = vendorRequire(name, entrypoint);
+
+  // The exact fileset stageIntoVendor would copy: the package root at the vendor
+  // root, plus each declared asset keyed by its repo-relative path — mirroring
+  // the layout below so the source and its vendored copy hash identically.
+  const parts: FilesetPart[] = [
+    { path: source, prefix: "" },
+    ...include.map((rel) => ({ path: join(staging, rel), prefix: rel })),
+  ];
+
+  // Re-vendoring rewrites every file's mtime, which makes DragonRuby's hot
+  // reloader reload the whole tree on boot. Recomputing the digest from the live
+  // source every sync keeps the "never miss a local edit" guarantee while
+  // skipping the churn when nothing — source or vendored output — has changed.
+  if (
+    options.cache && await exists(dest) &&
+    await filesetDigest([{ path: dest, prefix: "" }]) ===
+      await filesetDigest(parts)
+  ) {
+    return { require, staged: false };
+  }
+
   await Deno.remove(dest, { recursive: true }).catch(() => {});
   await copyTree(source, dest);
 
@@ -123,5 +164,5 @@ export const stageIntoVendor = async (
     );
   }
 
-  return vendorRequire(name, entrypoint);
+  return { require, staged: true };
 };

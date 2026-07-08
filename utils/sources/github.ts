@@ -78,7 +78,7 @@ export const vendorGithub = async (
       await entry.readable?.pipeTo((await Deno.create(target)).writable);
     }
 
-    const require = await stageIntoVendor(
+    const { require } = await stageIntoVendor(
       staging,
       ctx,
       spec.name,
