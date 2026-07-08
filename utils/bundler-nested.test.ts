@@ -307,13 +307,17 @@ describe("bundler (nested dependencies)", () => {
     );
   });
 
-  it("names the parents when updating a transitive dep directly", async () => {
-    await makeLib(tmp, "dragon_input");
+  it("updates a transitive dep directly, at its declared pin", async () => {
+    const timer = await makeLib(tmp, "timer");
+    await git(["init", "-b", "main"], timer);
+    await git(["add", "."], timer);
+    await git(["commit", "-m", "v1"], timer);
+
     await makeLib(
       tmp,
       "conjuration",
       '[package]\nroot = "lib"\nentrypoint = "conjuration.rb"\n\n' +
-        '[dependencies.dragon_input]\npath = "../dragon_input"\n',
+        `[dependencies.timer]\ngit = "${timer.replaceAll("\\", "/")}"\n`,
     );
 
     const project = await makeGame(
@@ -321,11 +325,36 @@ describe("bundler (nested dependencies)", () => {
       '[dependencies.conjuration]\npath = "../../conjuration"\n',
     );
     await bundle(project);
+    const before = (await readLock(project.lockPath))?.dependencies.find(
+      (d) => d.name === "timer",
+    );
+    assertExists(before?.ref);
+
+    await Deno.writeTextFile(join(timer, "lib", "timer.rb"), "# v2\n");
+    await git(["add", "."], timer);
+    await git(["commit", "-m", "v2"], timer);
+
+    await updateDependency(project, "timer");
+
+    const after = (await readLock(project.lockPath))?.dependencies.find(
+      (d) => d.name === "timer",
+    );
+    assert(after?.ref && after.ref !== before?.ref, "timer ref should move");
+    assertEquals(after?.via, ["conjuration"]);
+  });
+
+  it("rejects updating a name that is neither declared nor locked", async () => {
+    await makeLib(tmp, "conjuration");
+    const project = await makeGame(
+      tmp,
+      '[dependencies.conjuration]\npath = "../../conjuration"\n',
+    );
+    await bundle(project);
 
     await assertRejects(
-      () => updateDependency(project, "dragon_input"),
+      () => updateDependency(project, "nope"),
       Error,
-      "via conjuration",
+      "no dependency named 'nope'",
     );
   });
 

@@ -79,11 +79,15 @@ the rest stay pinned to their locked revisions; without one, everything is
 re-resolved. Pinned deps (a `tag` or `ref`) don't move; floating ones (a
 `branch`, or no pin) advance to the newest commit.
 
+The name may also be a transitive dependency — it's re-resolved at the pin its
+parent declared, without touching anything else.
+
 ### `drenv outdated`
 
 Checks each remote dependency's upstream against the lockfile and lists the ones
 whose tracked revision has moved on, so you can decide what to `drenv update`.
-Path and URL sources aren't revision-tracked and are skipped.
+Transitive dependencies are checked too (annotated `via <parent>`). Path and URL
+sources aren't revision-tracked and are skipped.
 
 ### `drenv bundle`
 
