@@ -79,7 +79,9 @@ export const lockedToSpec = (locked: LockedDependency): DependencySpec => {
 
 /** Like lockedToSpec, but with the declared pin (tag/branch) instead of the
  * resolved ref — the spec to use when *updating* the dependency. */
-const lockedToDeclaredSpec = (locked: LockedDependency): DependencySpec => {
+export const lockedToDeclaredSpec = (
+  locked: LockedDependency,
+): DependencySpec => {
   const spec = lockedToSpec(locked);
   delete spec.ref;
   spec.tag = locked.tag;
@@ -372,9 +374,11 @@ export const reconcile = async (
 
 /**
  * Re-resolves a single dependency to its latest, keeping every other
- * dependency at its currently locked revision. Anything not yet locked — a new
- * dependency, or one the updated package newly declares — is resolved too, and
- * packages that fell out of the graph are dropped.
+ * dependency at its currently locked revision. The target may be transitive —
+ * the graph walk reaches it through its (reused) parents and re-resolves it at
+ * its declared pin. Anything not yet locked — a new dependency, or one the
+ * updated package newly declares — is resolved too, and packages that fell out
+ * of the graph are dropped.
  */
 export const updateDependency = async (
   project: Project,
@@ -383,24 +387,20 @@ export const updateDependency = async (
 ): Promise<BundleResult> => {
   const log = options.log ?? (() => {});
   const manifest = await readManifest(project.manifestPath);
+  const oldLock = await readLock(project.lockPath);
 
-  if (!manifest.dependencies.some((dep) => dep.name === name)) {
-    const oldLock = await readLock(project.lockPath);
-    const locked = oldLock?.dependencies.find((dep) => dep.name === name);
-    if (locked?.via?.length) {
-      throw new Error(
-        `drenv: '${name}' is a transitive dependency (via ${
-          locked.via.join(", ")
-        }) — update its parent, or declare it in mygame/drenv.toml to manage it directly`,
-      );
-    }
+  const known = manifest.dependencies.some((dep) => dep.name === name) ||
+    oldLock?.dependencies.some(
+      (dep) => dep.name === name && dep.via?.length,
+    );
+
+  if (!known) {
     throw new Error(
       `drenv: no dependency named '${name}' in ${project.manifestPath}`,
     );
   }
 
   const ctx = context(project, log);
-  const oldLock = await readLock(project.lockPath);
 
   const dependencies = await resolveGraph(manifest.dependencies, {
     ctx,
