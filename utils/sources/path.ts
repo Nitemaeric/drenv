@@ -18,15 +18,18 @@ export const vendorPath = async (
   }
 
   // DragonRuby's sandboxed loader can't follow symlinks out of the game
-  // directory, so path deps are copied fresh (by stageIntoVendor) on every sync.
-  const require = await stageIntoVendor(
+  // directory, so path deps are copied (by stageIntoVendor) rather than linked.
+  // `cache` skips the copy when the vendored tree already matches the source, so
+  // an unchanged local library doesn't churn every file's mtime on each sync.
+  const { require, staged } = await stageIntoVendor(
     source,
     ctx,
     spec.name,
     spec.entrypoint,
+    { cache: true },
   );
 
-  ctx.log(`drenv: vendored ${spec.name} (path:${spec.path})`);
+  if (staged) ctx.log(`drenv: vendored ${spec.name} (path:${spec.path})`);
 
   return {
     name: spec.name,

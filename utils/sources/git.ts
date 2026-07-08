@@ -88,7 +88,12 @@ export const vendorGit = async (
 
     const { stdout: sha } = await git(["-C", tmp, "rev-parse", "HEAD"]);
 
-    const require = await stageIntoVendor(tmp, ctx, spec.name, spec.entrypoint);
+    const { require } = await stageIntoVendor(
+      tmp,
+      ctx,
+      spec.name,
+      spec.entrypoint,
+    );
 
     ctx.log(`drenv: vendored ${spec.name} (git:${url})`);
 

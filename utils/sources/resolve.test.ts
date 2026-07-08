@@ -130,7 +130,11 @@ describe("stageIntoVendor", () => {
     const mygame = join(tmp, "game", "mygame");
     await ensureDir(mygame);
 
-    const require = await stageIntoVendor(staging, ctx(mygame), "dragon_input");
+    const { require } = await stageIntoVendor(
+      staging,
+      ctx(mygame),
+      "dragon_input",
+    );
 
     assertEquals(require, "vendor/dragon_input/dragon_input.rb");
     // Code is vendored (root flattened)...
@@ -169,5 +173,108 @@ describe("stageIntoVendor", () => {
       Error,
       "invalid include path",
     );
+  });
+});
+
+describe("stageIntoVendor caching", () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await Deno.makeTempDir({ prefix: "drenv-cache-" });
+  });
+
+  afterEach(async () => {
+    await Deno.remove(tmp, { recursive: true });
+  });
+
+  const ctx = (mygame: string) => ({
+    mygame,
+    manifestDir: mygame,
+    log: () => {},
+  });
+
+  // A library with lib/<name>.rb code plus a declared sprites/ asset directory.
+  const seed = async (staging: string) => {
+    await ensureDir(join(staging, "lib"));
+    await ensureDir(join(staging, "sprites"));
+    await Deno.writeTextFile(join(staging, "lib", "lib.rb"), "# lib\n");
+    await Deno.writeTextFile(join(staging, "sprites", "a.png"), "PNG");
+    await Deno.writeTextFile(
+      join(staging, "drenv.toml"),
+      '[package]\nroot = "lib"\nentrypoint = "lib.rb"\ninclude = ["sprites"]\n',
+    );
+  };
+
+  const stage = (staging: string, mygame: string, cache = true) =>
+    stageIntoVendor(staging, ctx(mygame), "lib", undefined, { cache });
+
+  const setup = async () => {
+    const staging = join(tmp, "src");
+    await seed(staging);
+    const mygame = join(tmp, "game", "mygame");
+    await ensureDir(mygame);
+    return { staging, mygame };
+  };
+
+  it("skips the copy when the source is unchanged", async () => {
+    const { staging, mygame } = await setup();
+
+    assertEquals((await stage(staging, mygame)).staged, true);
+    assertEquals((await stage(staging, mygame)).staged, false);
+  });
+
+  it("re-vendors when a source file changes", async () => {
+    const { staging, mygame } = await setup();
+    await stage(staging, mygame);
+
+    await Deno.writeTextFile(join(staging, "lib", "lib.rb"), "# changed\n");
+
+    assertEquals((await stage(staging, mygame)).staged, true);
+    assertEquals(
+      await Deno.readTextFile(join(mygame, "vendor", "lib", "lib.rb")),
+      "# changed\n",
+    );
+  });
+
+  it("re-vendors when an included asset changes", async () => {
+    const { staging, mygame } = await setup();
+    await stage(staging, mygame);
+
+    await Deno.writeTextFile(join(staging, "sprites", "a.png"), "PNG2");
+
+    assertEquals((await stage(staging, mygame)).staged, true);
+    assertEquals(
+      await Deno.readTextFile(
+        join(mygame, "vendor", "lib", "sprites", "a.png"),
+      ),
+      "PNG2",
+    );
+  });
+
+  it("re-vendors when the vendor directory is missing", async () => {
+    const { staging, mygame } = await setup();
+    await stage(staging, mygame);
+
+    await Deno.remove(join(mygame, "vendor", "lib"), { recursive: true });
+
+    assertEquals((await stage(staging, mygame)).staged, true);
+    assert(await exists(join(mygame, "vendor", "lib", "lib.rb")));
+  });
+
+  it("re-vendors a deleted vendored file even when the source is unchanged", async () => {
+    const { staging, mygame } = await setup();
+    await stage(staging, mygame);
+
+    await Deno.remove(join(mygame, "vendor", "lib", "sprites", "a.png"));
+
+    assertEquals((await stage(staging, mygame)).staged, true);
+    assert(await exists(join(mygame, "vendor", "lib", "sprites", "a.png")));
+  });
+
+  it("always re-copies without the cache option", async () => {
+    const { staging, mygame } = await setup();
+
+    assertEquals((await stage(staging, mygame, false)).staged, true);
+    assertEquals((await stage(staging, mygame, false)).staged, true);
   });
 });
