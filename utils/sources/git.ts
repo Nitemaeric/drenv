@@ -1,6 +1,7 @@
 import type { DependencySpec } from "../manifest.ts";
 import { treeDigest } from "../integrity.ts";
 import {
+  readLibraryDependencies,
   stageIntoVendor,
   type VendorContext,
   vendorDir,
@@ -108,8 +109,12 @@ export const vendorGit = async (
         ref: sha || undefined,
         require: [require],
         integrity: await treeDigest(vendorDir(ctx, spec.name)),
+        tag: spec.tag,
+        branch: spec.branch,
+        entrypoint: spec.entrypoint,
       },
       staged: true,
+      dependencies: await readLibraryDependencies(tmp),
     };
   } finally {
     await Deno.remove(tmp, { recursive: true }).catch(() => {});

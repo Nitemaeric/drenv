@@ -139,3 +139,39 @@ repo root — and drenv copies each into `vendor/<name>/<path>`, preserving its
 name. A library with `lib/dragon_input.rb` and a top-level `sprites/` would use
 `include = ["sprites"]`, and its sprites land at
 `mygame/vendor/dragon_input/sprites/…` for the game to load.
+
+### Declaring dependencies (nested dependencies)
+
+A library can depend on other libraries. Declare them in the same
+`[dependencies]` table games use, in the `drenv.toml` at your repo root:
+
+```toml
+[package]
+root = "lib"
+entrypoint = "conjuration.rb"
+
+[dependencies.dragon_input]
+github = "Nitemaeric/dragon_input"
+```
+
+When a game vendors your library, drenv resolves your dependencies too — flat,
+one copy per package under `mygame/vendor/<name>`, required before your library
+in the generated bundle. The game's lockfile records the whole graph, and
+`drenv list` shows transitive deps as `via <parent>`.
+
+**Conflict policy.** Each package name resolves to exactly one spec:
+
+- If the **game** declares the package in its own `drenv.toml`, that spec wins —
+  drenv warns when a library wanted something different.
+- If two **libraries** declare the same package with different specs, that's an
+  error; the game resolves it by declaring the package top-level.
+
+**Rules for library-declared dependencies:**
+
+- `path:` dependencies are only allowed when your library is itself consumed as
+  a `path:` dependency (local, side-by-side development) — a relative path
+  inside a remote library points at nothing on the consumer's machine.
+- Dependency cycles are an error.
+- Locked refs stay sticky: updating one package never silently moves another's
+  locked revision. `drenv update <parent>` re-resolves the parent and anything
+  it newly declares; packages it dropped are pruned.

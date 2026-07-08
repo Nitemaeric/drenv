@@ -47,7 +47,10 @@ export const vendorUrl = async (
       source: `url:${url}`,
       require: [vendorRequire(spec.name, filename)],
       integrity: await treeDigest(dest),
+      entrypoint: spec.entrypoint,
     },
     staged: true,
+    // A url dep is a single file — it can't declare dependencies of its own.
+    dependencies: [],
   };
 };
