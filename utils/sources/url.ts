@@ -2,14 +2,18 @@ import { ensureDir } from "@std/fs";
 import { basename, dirname, join } from "@std/path";
 
 import type { DependencySpec } from "../manifest.ts";
-import type { LockedDependency } from "../lockfile.ts";
 import { treeDigest } from "../integrity.ts";
-import { type VendorContext, vendorDir, vendorRequire } from "./resolve.ts";
+import {
+  type VendorContext,
+  vendorDir,
+  vendorRequire,
+  type VendorResult,
+} from "./resolve.ts";
 
 export const vendorUrl = async (
   spec: DependencySpec,
   ctx: VendorContext,
-): Promise<LockedDependency> => {
+): Promise<VendorResult> => {
   const url = spec.url!;
   const filename = spec.entrypoint ?? basename(new URL(url).pathname);
 
@@ -38,9 +42,12 @@ export const vendorUrl = async (
   ctx.log(`drenv: vendored ${spec.name} (url)`);
 
   return {
-    name: spec.name,
-    source: `url:${url}`,
-    require: [vendorRequire(spec.name, filename)],
-    integrity: await treeDigest(dest),
+    locked: {
+      name: spec.name,
+      source: `url:${url}`,
+      require: [vendorRequire(spec.name, filename)],
+      integrity: await treeDigest(dest),
+    },
+    staged: true,
   };
 };

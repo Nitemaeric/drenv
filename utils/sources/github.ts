@@ -3,9 +3,13 @@ import { dirname, join } from "@std/path";
 import { configure, ZipReaderStream } from "@zip-js/zip-js";
 
 import type { DependencySpec } from "../manifest.ts";
-import type { LockedDependency } from "../lockfile.ts";
 import { treeDigest } from "../integrity.ts";
-import { stageIntoVendor, type VendorContext, vendorDir } from "./resolve.ts";
+import {
+  stageIntoVendor,
+  type VendorContext,
+  vendorDir,
+  type VendorResult,
+} from "./resolve.ts";
 
 configure({ useWebWorkers: false });
 
@@ -40,7 +44,7 @@ export const githubRef = async (
 export const vendorGithub = async (
   spec: DependencySpec,
   ctx: VendorContext,
-): Promise<LockedDependency> => {
+): Promise<VendorResult> => {
   const [owner, repo] = spec.github!.split("/");
 
   if (!owner || !repo) {
@@ -90,11 +94,14 @@ export const vendorGithub = async (
     );
 
     return {
-      name: spec.name,
-      source: `github:${spec.github}`,
-      ref: sha ?? downloadRef,
-      require: [require],
-      integrity: await treeDigest(vendorDir(ctx, spec.name)),
+      locked: {
+        name: spec.name,
+        source: `github:${spec.github}`,
+        ref: sha ?? downloadRef,
+        require: [require],
+        integrity: await treeDigest(vendorDir(ctx, spec.name)),
+      },
+      staged: true,
     };
   } finally {
     await Deno.remove(staging, { recursive: true }).catch(() => {});

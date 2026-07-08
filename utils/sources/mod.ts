@@ -1,18 +1,17 @@
 import { type DependencySpec, sourceKind } from "../manifest.ts";
-import type { LockedDependency } from "../lockfile.ts";
 
 import { gitRef, vendorGit } from "./git.ts";
 import { githubRef, vendorGithub } from "./github.ts";
 import { vendorPath } from "./path.ts";
 import { vendorUrl } from "./url.ts";
 
-export type { VendorContext } from "./resolve.ts";
-import type { VendorContext } from "./resolve.ts";
+export type { VendorContext, VendorResult } from "./resolve.ts";
+import type { VendorContext, VendorResult } from "./resolve.ts";
 
 export const vendorDependency = (
   spec: DependencySpec,
   ctx: VendorContext,
-): Promise<LockedDependency> => {
+): Promise<VendorResult> => {
   switch (sourceKind(spec)) {
     case "path":
       return vendorPath(spec, ctx);
