@@ -52,6 +52,9 @@ Pass `-e, --entrypoint` only when the library doesn't declare or follow a
 conventional entrypoint, `-n, --name` to override the derived name, and
 `--tag`/`--branch`/`--ref` to pin a `github`/`git` revision.
 
+Adding resolves **only the new dependency** — everything else stays at its
+locked revision. Locked refs move only under `drenv update`.
+
 ### `drenv remove <name>`
 
 Removes a dependency from `mygame/drenv.toml`, deletes its vendored copy, and

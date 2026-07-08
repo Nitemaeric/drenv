@@ -1,7 +1,7 @@
 import { basename, dirname, relative, resolve } from "@std/path";
 
 import { findProject } from "../utils/project.ts";
-import { bundle } from "../utils/bundler.ts";
+import { updateDependency } from "../utils/bundler.ts";
 import { BUNDLE_REQUIRE } from "../utils/bundle-file.ts";
 import { type DependencySpec, readManifest } from "../utils/manifest.ts";
 import {
@@ -76,7 +76,9 @@ export default async function add(source: string, options: AddOptions = {}) {
 
   let needsRequireLine: boolean;
   try {
-    ({ needsRequireLine } = await bundle(project, {
+    // Resolve only the new dependency; existing locked refs stay put. Locked
+    // refs move only under `drenv update`.
+    ({ needsRequireLine } = await updateDependency(project, name, {
       log: (message) => console.log(message),
     }));
   } catch (error) {
