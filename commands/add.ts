@@ -48,7 +48,9 @@ export default async function add(source: string, options: AddOptions = {}) {
       name ??= basename(absolute).replace(/\.[^.]+$/, "");
     }
 
-    value = relative(project.mygame, directory) || ".";
+    // Store with forward slashes: backslashes are escape characters in TOML
+    // strings, and the manifest is committed and shared across platforms.
+    value = (relative(project.mygame, directory) || ".").replaceAll("\\", "/");
   }
 
   name ??= deriveName({ kind: parsed.kind, value });
