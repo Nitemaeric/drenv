@@ -1,0 +1,11 @@
+id = "drenv"
+name = "drenv"
+description = "DragonRuby language intelligence via the drenv language server."
+version = "0.1.0"
+schema_version = 1
+authors = ["Nitemaeric <danieldye.uk@gmail.com>"]
+repository = "https://github.com/Nitemaeric/drenv"
+
+[language_servers.drenv]
+name = "drenv"
+languages = ["Ruby"]
