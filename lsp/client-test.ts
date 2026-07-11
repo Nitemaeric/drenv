@@ -30,6 +30,10 @@ end
 def spawn_enemy args
   args.state.enemies ||= []
 end
+
+def core_demo
+  [1, 2].
+end
 `;
 await Deno.writeTextFile(join(mygame, "app", "main.rb"), MAIN);
 await Deno.writeTextFile(
@@ -169,6 +173,21 @@ check(
   "completion: args. lists engine chains",
   argLabels.includes("outputs") && argLabels.includes("state"),
   argLabels.slice(0, 6).join(", "),
+);
+
+// Core methods on a literal receiver: `[1, 2].` (line 11, after the dot).
+// deno-lint-ignore no-explicit-any
+const coreCompletion: any = await request("textDocument/completion", {
+  textDocument: { uri: mainUri },
+  position: { line: 12, character: 9 },
+});
+const coreLabels = (coreCompletion ?? []).map((c: { label: string }) =>
+  c.label
+);
+check(
+  "completion: [].each — mruby core methods on literal receivers",
+  coreLabels.includes("each") && coreLabels.includes("map"),
+  `${coreLabels.length} items`,
 );
 
 // Hover over a workspace def (spawn_enemy call on line 2, col 3).

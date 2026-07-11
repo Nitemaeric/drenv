@@ -217,6 +217,167 @@ const diagnostics = (uri: string): unknown[] => {
   return out;
 };
 
+// --- mruby core index (spike: curated; production generates from mruby src) --
+
+const CORE_METHODS: Record<string, string[]> = {
+  Array: [
+    "each",
+    "each_with_index",
+    "map",
+    "map!",
+    "select",
+    "reject",
+    "reduce",
+    "inject",
+    "find",
+    "include?",
+    "length",
+    "size",
+    "count",
+    "first",
+    "last",
+    "push",
+    "pop",
+    "shift",
+    "unshift",
+    "flatten",
+    "compact",
+    "uniq",
+    "sort",
+    "sort_by",
+    "min",
+    "max",
+    "min_by",
+    "max_by",
+    "sum",
+    "zip",
+    "take",
+    "drop",
+    "empty?",
+    "any?",
+    "all?",
+    "none?",
+    "sample",
+    "shuffle",
+    "reverse",
+    "join",
+    "index",
+    "delete",
+    "delete_if",
+    "concat",
+    "each_slice",
+    "group_by",
+    "partition",
+    "flat_map",
+  ],
+  Hash: [
+    "each",
+    "each_pair",
+    "keys",
+    "values",
+    "map",
+    "merge",
+    "merge!",
+    "select",
+    "reject",
+    "fetch",
+    "store",
+    "delete",
+    "key?",
+    "has_key?",
+    "include?",
+    "value?",
+    "empty?",
+    "length",
+    "size",
+    "any?",
+    "all?",
+    "to_a",
+    "invert",
+    "dig",
+    "update",
+    "find",
+    "count",
+    "sort_by",
+    "min_by",
+    "max_by",
+    "sum",
+  ],
+  String: [
+    "length",
+    "size",
+    "split",
+    "sub",
+    "gsub",
+    "strip",
+    "chomp",
+    "upcase",
+    "downcase",
+    "capitalize",
+    "include?",
+    "start_with?",
+    "end_with?",
+    "index",
+    "slice",
+    "chars",
+    "bytes",
+    "lines",
+    "to_i",
+    "to_f",
+    "to_s",
+    "to_sym",
+    "empty?",
+    "reverse",
+    "concat",
+    "ljust",
+    "rjust",
+    "each_char",
+    "each_line",
+  ],
+  Numeric: [
+    "times",
+    "upto",
+    "downto",
+    "step",
+    "abs",
+    "ceil",
+    "floor",
+    "round",
+    "to_i",
+    "to_f",
+    "to_s",
+    "zero?",
+    "positive?",
+    "negative?",
+    "even?",
+    "odd?",
+    "clamp",
+    "between?",
+    "divmod",
+    "succ",
+    "pred",
+    // DragonRuby Numeric extensions:
+    "lerp",
+    "remap",
+    "frame_index",
+    "elapsed?",
+    "vector_x",
+    "vector_y",
+    "to_radians",
+    "to_degrees",
+  ],
+};
+
+// A literal receiver names its class outright — no inference needed.
+const literalClass = (prefix: string): string | null => {
+  const lit = prefix.match(/(\]|\}|"|'|\d)\s*\.\s*\w*$/)?.[1];
+  if (!lit) return null;
+  if (lit === "]") return "Array";
+  if (lit === "}") return "Hash";
+  if (lit === '"' || lit === "'") return "String";
+  return "Numeric";
+};
+
 // --- language features ---------------------------------------------------------
 
 const lineUpTo = (uri: string, pos: Pos): string => {
@@ -238,6 +399,15 @@ const completions = (uri: string, pos: Pos): unknown[] => {
         documentation: { kind: "markdown", value: e.doc },
       }));
     }
+  }
+
+  const cls = literalClass(prefix);
+  if (cls) {
+    return CORE_METHODS[cls].map((label) => ({
+      label,
+      kind: 2, // Method
+      documentation: { kind: "markdown", value: `mruby \`${cls}#${label}\`` },
+    }));
   }
 
   // Fall back to workspace definitions + engine top-levels.
