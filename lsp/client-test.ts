@@ -190,6 +190,21 @@ check(
   `${coreLabels.length} items`,
 );
 
+// Engine markdown docs flow through: map_2d is a DragonRuby Array extension
+// that only exists in docs/api/array.md, and its docs ride the completion.
+const map2d = (coreCompletion ?? []).find(
+  (c: { label: string }) => c.label === "map_2d",
+);
+check(
+  "docs: DR Array extension surfaced from docs/api/array.md",
+  !!map2d,
+);
+check(
+  "docs: real markdown attached to completions",
+  (map2d?.documentation?.value ?? "").length > 50,
+  `${map2d?.documentation?.value?.length ?? 0} chars`,
+);
+
 // Hover over a workspace def (spawn_enemy call on line 2, col 3).
 // deno-lint-ignore no-explicit-any
 const hoverResult: any = await request("textDocument/hover", {

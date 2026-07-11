@@ -92,6 +92,47 @@ const indexEngineModule = async (dir: string, file: string, name: string) => {
   if (entries.length > 0) api.set(name, entries);
 };
 
+// --- engine markdown docs (the same files docs.dragonruby.org serves) -------
+
+const methodDocs = new Map<string, Map<string, string>>();
+
+const indexDocsFile = async (dir: string, file: string, key: string) => {
+  let text: string;
+  try {
+    text = await Deno.readTextFile(join(dir, "docs", "api", file));
+  } catch {
+    return;
+  }
+
+  const docs = methodDocs.get(key) ?? new Map<string, string>();
+  let names: string[] = [];
+  let body: string[] = [];
+
+  const flush = () => {
+    const doc = body.join("\n").trim();
+    for (const name of names) {
+      if (doc && !docs.has(name)) docs.set(name, doc);
+    }
+    names = [];
+    body = [];
+  };
+
+  for (const line of text.split("\n")) {
+    const heading = line.match(/^#{2,3} (.+)$/);
+    if (heading) {
+      flush();
+      // Method names are backticked in headings; skip class-like tokens so
+      // category headings ("`Array` Class Methods") don't pollute the index.
+      names = [...heading[1].matchAll(/`([a-z_][\w?!]*)`/g)].map((m) => m[1]);
+    } else if (names.length) {
+      body.push(line);
+    }
+  }
+  flush();
+
+  methodDocs.set(key, docs);
+};
+
 const buildApiIndex = async () => {
   const version = (await installedVersions())[0];
   if (!version) return;
@@ -109,6 +150,29 @@ const buildApiIndex = async () => {
         doc: `DragonRuby \`${chain}.${label}\``,
       })),
     );
+  }
+
+  await indexDocsFile(dir, "geometry.md", "Geometry");
+  await indexDocsFile(dir, "easing.md", "Easing");
+  await indexDocsFile(dir, "array.md", "Array");
+  await indexDocsFile(dir, "numeric.md", "Numeric");
+  await indexDocsFile(dir, "outputs.md", "args.outputs");
+  await indexDocsFile(dir, "inputs.md", "args.inputs");
+
+  // Enrich indexed entries with the markdown docs and surface doc-only
+  // methods (e.g. C-implemented ones the Ruby source never mentions).
+  for (const [key, docs] of methodDocs) {
+    const entries = api.get(key);
+    if (!entries) continue;
+    for (const entry of entries) {
+      const doc = docs.get(entry.label);
+      if (doc) entry.doc = doc;
+    }
+    for (const [name, doc] of docs) {
+      if (!entries.some((e) => e.label === name)) {
+        entries.push({ label: name, doc });
+      }
+    }
   }
 };
 
@@ -403,10 +467,16 @@ const completions = (uri: string, pos: Pos): unknown[] => {
 
   const cls = literalClass(prefix);
   if (cls) {
-    return CORE_METHODS[cls].map((label) => ({
+    const docs = methodDocs.get(cls);
+    const labels = new Set(CORE_METHODS[cls]);
+    for (const name of docs?.keys() ?? []) labels.add(name);
+    return [...labels].map((label) => ({
       label,
       kind: 2, // Method
-      documentation: { kind: "markdown", value: `mruby \`${cls}#${label}\`` },
+      documentation: {
+        kind: "markdown",
+        value: docs?.get(label) ?? `mruby \`${cls}#${label}\``,
+      },
     }));
   }
 
