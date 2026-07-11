@@ -358,6 +358,77 @@ check(
 
 await request("shutdown", null);
 await notify("exit", null);
+
+// --- dormant mode: a non-DragonRuby workspace gets no capabilities ----------
+
+const plain = await Deno.makeTempDir({ prefix: "drenv-lsp-plain-" });
+await Deno.writeTextFile(join(plain, "app.rb"), "puts 'rails-ish'\n");
+
+const proc2 = new Deno.Command(cmd, {
+  args,
+  cwd: plain,
+  stdin: "piped",
+  stdout: "piped",
+  stderr: "inherit",
+}).spawn();
+const writer2 = proc2.stdin.getWriter();
+
+const send2 = async (message: unknown) => {
+  const body = encoder.encode(JSON.stringify(message));
+  await writer2.write(encoder.encode(`Content-Length: ${body.length}\r\n\r\n`));
+  await writer2.write(body);
+};
+
+const initDormant = await new Promise<
+  // deno-lint-ignore no-explicit-any
+  any
+>((resolve, reject) => {
+  const timer = setTimeout(
+    () => reject(new Error("timeout waiting for dormant initialize")),
+    15000,
+  );
+  (async () => {
+    let buf = new Uint8Array(0);
+    for await (const chunk of proc2.stdout) {
+      const merged = new Uint8Array(buf.length + chunk.length);
+      merged.set(buf);
+      merged.set(chunk, buf.length);
+      buf = merged;
+      const text = decoder.decode(buf);
+      const headerEnd = text.indexOf("\r\n\r\n");
+      if (headerEnd === -1) continue;
+      const length = Number(text.match(/Content-Length: (\d+)/i)?.[1] ?? 0);
+      const bodyStart = encoder.encode(text.slice(0, headerEnd + 4)).length;
+      if (buf.length < bodyStart + length) continue;
+      clearTimeout(timer);
+      resolve(
+        JSON.parse(decoder.decode(buf.slice(bodyStart, bodyStart + length))),
+      );
+      return;
+    }
+  })();
+  send2({
+    jsonrpc: "2.0",
+    id: 999,
+    method: "initialize",
+    params: {
+      processId: null,
+      rootUri: toFileUrl(plain).href,
+      capabilities: {},
+    },
+  });
+});
+
+check(
+  "dormant: non-DragonRuby workspace advertises no capabilities",
+  initDormant?.result?.serverInfo?.version?.includes("dormant") &&
+    !initDormant?.result?.capabilities?.completionProvider,
+  initDormant?.result?.serverInfo?.version ?? "no response",
+);
+
+await send2({ jsonrpc: "2.0", method: "exit", params: null });
+proc2.kill();
+await Deno.remove(plain, { recursive: true }).catch(() => {});
 await pump.catch(() => {});
 await Deno.remove(tmp, { recursive: true }).catch(() => {});
 

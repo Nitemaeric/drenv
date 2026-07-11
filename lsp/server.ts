@@ -990,15 +990,57 @@ const publishDiagnostics = (uri: string) =>
     diagnostics: diagnostics(uri),
   });
 
+// When the workspace isn't a DragonRuby project, the server stays dormant:
+// it answers the lifecycle but advertises no capabilities and indexes
+// nothing, so the extension can be enabled for Ruby globally without
+// interfering with non-DragonRuby projects.
+let dormant = false;
+
+const isDragonRubyProject = async (root: string): Promise<boolean> => {
+  for (const marker of ["dragonruby", "dragonruby.exe", "mygame"]) {
+    try {
+      await Deno.stat(join(root, marker));
+      return true;
+    } catch {
+      // keep looking
+    }
+  }
+  return false;
+};
+
 // deno-lint-ignore no-explicit-any
 const handle = async (msg: any) => {
   const { id, method, params } = msg;
+
+  if (dormant) {
+    switch (method) {
+      case "shutdown":
+        await respond(id, null);
+        return;
+      case "exit":
+        Deno.exit(0);
+        break;
+      default:
+        if (id !== undefined) await respond(id, null);
+        return;
+    }
+  }
 
   switch (method) {
     case "initialize": {
       const root = params.rootUri
         ? fromFileUrl(params.rootUri)
         : params.rootPath ?? Deno.cwd();
+
+      if (!await isDragonRubyProject(root)) {
+        dormant = true;
+        await respond(id, {
+          capabilities: {},
+          serverInfo: { name: "drenv-lsp", version: "spike (dormant)" },
+        });
+        break;
+      }
+
       await buildApiIndex();
       await scanWorkspace(root);
       await respond(id, {
