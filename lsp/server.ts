@@ -276,6 +276,69 @@ const scanWorkspace = async (root: string) => {
 
 // --- diagnostics --------------------------------------------------------------
 
+// --- performance hints (from the engine's troubleshoot-performance guide) ---
+
+const MUTATORS = new Set([
+  "delete",
+  "delete_at",
+  "delete_if",
+  "push",
+  "unshift",
+  "pop",
+  "shift",
+  "clear",
+  "concat",
+  "insert",
+  "reject!",
+  "select!",
+]);
+
+const PERF_GUIDE =
+  "https://docs.dragonruby.org/#/guides/troubleshoot-performance?id=array-manipulation";
+
+// Flags mutation of a collection inside its own `.each` block — the guide's
+// "Array Manipulation" antipattern (collect changes, apply after the loop).
+const mutationDuringIteration = (node: Node, out: unknown[]) => {
+  if (node.type !== "call") return;
+  if (node.childForFieldName("method")?.text !== "each") return;
+  const receiver = node.childForFieldName("receiver")?.text;
+  const block = node.childForFieldName("block");
+  if (!receiver || !block) return;
+
+  const flag = (target: Node, how: string) =>
+    out.push({
+      range: nodeRange(target),
+      severity: 3, // Information
+      source: "drenv",
+      code: "array-manipulation",
+      codeDescription: { href: PERF_GUIDE },
+      message:
+        `\`${receiver}\` is ${how} while it's being iterated — collect ` +
+        `changes and apply them after the loop (e.g. \`reject!\`). ` +
+        `See: Troubleshoot Performance → Array Manipulation.`,
+    });
+
+  const scan = (n: Node) => {
+    if (n.type === "call") {
+      const method = n.childForFieldName("method");
+      if (
+        method && MUTATORS.has(method.text) &&
+        n.childForFieldName("receiver")?.text === receiver
+      ) {
+        flag(n, `mutated (\`${method.text}\`)`);
+      }
+    }
+    if (n.type === "binary") {
+      const operator = n.childForFieldName("operator")?.text;
+      if (operator === "<<" && n.childForFieldName("left")?.text === receiver) {
+        flag(n, "appended to (`<<`)");
+      }
+    }
+    for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
+  };
+  scan(block);
+};
+
 const diagnostics = (uri: string): unknown[] => {
   const tree = fileTree.get(uri);
   if (!tree) return [];
@@ -312,6 +375,8 @@ const diagnostics = (uri: string): unknown[] => {
         });
       }
     }
+
+    mutationDuringIteration(node, out);
 
     for (let i = 0; i < node.namedChildCount; i++) visit(node.namedChild(i)!);
   };
