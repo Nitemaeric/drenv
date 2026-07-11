@@ -27,7 +27,7 @@ const initParser = async () => {
 type Param = {
   label: string;
   name: string;
-  kind: "required" | "optional" | "rest";
+  kind: "required" | "optional" | "rest" | "keyword" | "keyword_optional";
   /** Geometric attributes the engine's own body reads off this parameter. */
   shape?: string[];
 };
@@ -70,11 +70,20 @@ const extractParams = (method: Node): Param[] => {
         params.push({ label: child.text, name: child.text, kind: "required" });
         break;
       case "optional_parameter":
-      case "keyword_parameter":
         params.push({
           label: child.text,
           name: named(child),
           kind: "optional",
+        });
+        break;
+      case "keyword_parameter":
+        params.push({
+          label: child.text,
+          name: named(child),
+          // A keyword without a default is required at the call site.
+          kind: child.childForFieldName("value")
+            ? "keyword_optional"
+            : "keyword",
         });
         break;
       case "splat_parameter":
@@ -486,75 +495,129 @@ const diagnostics = (uri: string): unknown[] => {
         const entry = known.find((e) => e.label === method.text);
         const argsNode = node.childForFieldName("arguments");
         if (entry?.params && argsNode) {
-          // Contiguous trailing keyword pairs collapse into one hash argument.
-          const children = [];
+          const all: Node[] = [];
           for (let i = 0; i < argsNode.namedChildCount; i++) {
             const child = argsNode.namedChild(i)!;
-            if (child.type !== "block_argument") children.push(child);
+            if (child.type !== "block_argument") all.push(child);
           }
-          while (
-            children.length > 1 &&
-            children[children.length - 1].type === "pair" &&
-            children[children.length - 2].type === "pair"
-          ) {
-            children.pop();
-          }
-          const count = children.length;
 
-          const required = entry.params.filter((p) =>
-            p.kind === "required"
-          ).length;
-          const hasRest = entry.params.some((p) => p.kind === "rest");
-          const max = hasRest ? Infinity : entry.params.length;
+          const keywords = entry.params.filter((p) =>
+            p.kind === "keyword" || p.kind === "keyword_optional"
+          );
+          const positionalParams = entry.params.filter((p) =>
+            p.kind === "required" || p.kind === "optional" || p.kind === "rest"
+          );
 
-          // Shape check: a hash-literal argument must carry the geometric
-          // attrs the engine's own body reads off that parameter. Only
-          // literals are checked — variables would need type inference.
-          const positional = entry.params.filter((p) => p.kind !== "rest");
-          for (let i = 0; i < children.length && i < positional.length; i++) {
-            const arg = children[i];
-            const param = positional[i];
-            if (arg.type !== "hash" || !param.shape) continue;
-
+          // A hash-literal must carry the geometric attrs the engine's own
+          // body reads off the parameter. Literals only — variables would
+          // need type inference.
+          const shapeCheck = (arg: Node, param: Param, where: string) => {
+            if (arg.type !== "hash" || !param.shape) return;
             const keys = new Set<string>();
+            let splat = false;
             for (let j = 0; j < arg.namedChildCount; j++) {
               const pair = arg.namedChild(j)!;
               if (pair.type !== "pair") {
-                keys.clear();
-                break; // splatted hash contents — can't verify
+                splat = true;
+                break;
               }
               const key = pair.childForFieldName("key");
               if (key) keys.add(key.text.replace(/:$/, ""));
             }
-            if (keys.size === 0) continue;
-
+            if (splat || keys.size === 0) return;
             const missing = param.shape.filter((attr) => !keys.has(attr));
             if (missing.length > 0) {
               out.push({
                 range: nodeRange(arg),
                 severity: 2,
                 source: "drenv",
-                message: `argument ${i + 1} (\`${param.name}\`) is missing ` +
+                message: `${where} (\`${param.name}\`) is missing ` +
                   missing.map((m) => `\`.${m}\``).join(", ") +
                   ` — ${receiver!.text}.${method.text} reads ` +
                   param.shape.map((s) => `${param.name}.${s}`).join(", "),
               });
             }
-          }
+          };
 
-          if (count < required || count > max) {
+          const arityError = (count: number) => {
+            const required = positionalParams.filter((p) =>
+              p.kind === "required"
+            ).length;
+            const hasRest = positionalParams.some((p) => p.kind === "rest");
+            const max = hasRest ? Infinity : positionalParams.length;
+            if (count >= required && count <= max) return;
             const expected = hasRest
               ? `at least ${required}`
-              : required === entry.params.length
+              : required === positionalParams.length
               ? `${required}`
-              : `${required}..${entry.params.length}`;
+              : `${required}..${positionalParams.length}`;
             out.push({
               range: nodeRange(argsNode),
               severity: 2,
               source: "drenv",
               message: `${receiver!.text}.${method.text} expects ${expected} ` +
-                `argument(s) — \`${entry.signature}\` — got ${count}`,
+                `positional argument(s) — \`${entry.signature}\` — got ${count}`,
             });
+          };
+
+          if (keywords.length > 0) {
+            // Bare pairs are kwargs: validate names, required presence, and
+            // hash-literal values against the parameter's derived shape.
+            const pairs = all.filter((c) => c.type === "pair");
+            const positionalArgs = all.filter((c) => c.type !== "pair");
+            const given = new Set<string>();
+
+            for (const pair of pairs) {
+              const key = pair.childForFieldName("key")?.text.replace(/:$/, "");
+              if (!key) continue;
+              given.add(key);
+              const param = keywords.find((k) => k.name === key);
+              if (!param) {
+                out.push({
+                  range: nodeRange(pair),
+                  severity: 2,
+                  source: "drenv",
+                  message: `\`${key}:\` is not a keyword of ` +
+                    `${receiver!.text}.${method.text} — accepted: ` +
+                    keywords.map((k) => `${k.name}:`).join(", "),
+                });
+              } else {
+                const value = pair.childForFieldName("value");
+                if (value) shapeCheck(value, param, `keyword \`${key}:\``);
+              }
+            }
+
+            const missingRequired = keywords.filter((k) =>
+              k.kind === "keyword" && !given.has(k.name)
+            );
+            if (missingRequired.length > 0) {
+              out.push({
+                range: nodeRange(argsNode),
+                severity: 2,
+                source: "drenv",
+                message: `${receiver!.text}.${method.text} is missing ` +
+                  `required keyword(s) ` +
+                  missingRequired.map((k) => `\`${k.name}:\``).join(", ") +
+                  ` — \`${entry.signature}\``,
+              });
+            }
+
+            arityError(positionalArgs.length);
+          } else {
+            // Contiguous trailing pairs collapse into one options hash.
+            const children = [...all];
+            while (
+              children.length > 1 &&
+              children[children.length - 1].type === "pair" &&
+              children[children.length - 2].type === "pair"
+            ) {
+              children.pop();
+            }
+            const nonRest = positionalParams.filter((p) => p.kind !== "rest");
+            for (let i = 0; i < children.length && i < nonRest.length; i++) {
+              shapeCheck(children[i], nonRest[i], `argument ${i + 1}`);
+            }
+            arityError(children.length);
           }
         }
       }
