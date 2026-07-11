@@ -47,6 +47,10 @@ def sig_demo
   Geometry.distance({x: 0, y: 0}, {x: 3, y: 4})
   Geometry.rotate_point({x: 0, y: 0})
 end
+
+def shape_demo
+  Geometry.distance({x: 0}, {x: 3, y: 4})
+end
 `;
 await Deno.writeTextFile(join(mygame, "app", "main.rb"), MAIN);
 await Deno.writeTextFile(
@@ -272,6 +276,16 @@ check(
   "completion: detail shows the signature",
   distItem?.detail === "distance(point_one, point_two)",
   distItem?.detail ?? "none",
+);
+
+// Shape verification: derived from the engine body (distance reads .x/.y),
+// checked against hash-literal arguments.
+const shapes = diags.filter((d) => d.message.includes("is missing"));
+check(
+  "diagnostics: shape — {x: 0} missing .y for point_one",
+  shapes.length === 1 && shapes[0].message.includes("`point_one`") &&
+    shapes[0].message.includes("`.y`"),
+  shapes[0]?.message ?? "missing",
 );
 
 const perf = diags.find((d) => d.code === "array-manipulation");
