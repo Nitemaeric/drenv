@@ -36,6 +36,12 @@ def core_demo
   Array.new(3)
   Array.
 end
+
+def fx_demo args
+  args.state.fx_queue.each do |fx|
+    args.state.fx_queue.delete fx
+  end
+end
 `;
 await Deno.writeTextFile(join(mygame, "app", "main.rb"), MAIN);
 await Deno.writeTextFile(
@@ -225,6 +231,14 @@ check(
 check(
   "diagnostics: Array.new NOT flagged (validity restricted)",
   !diags.some((d) => d.message.includes("not a method on Array")),
+);
+
+const perf = diags.find((d) => d.code === "array-manipulation");
+check(
+  "diagnostics: perf hint — mutation during iteration (guide-linked)",
+  !!perf && perf.message.includes("while it's being iterated") &&
+    (perf.codeDescription?.href ?? "").includes("troubleshoot-performance"),
+  perf ? "links the guide" : "missing",
 );
 
 // Hover over a workspace def (spawn_enemy call on line 2, col 3).
