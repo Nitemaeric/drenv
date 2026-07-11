@@ -33,6 +33,8 @@ end
 
 def core_demo
   [1, 2].
+  Array.new(3)
+  Array.
 end
 `;
 await Deno.writeTextFile(join(mygame, "app", "main.rb"), MAIN);
@@ -203,6 +205,26 @@ check(
   "docs: real markdown attached to completions",
   (map2d?.documentation?.value ?? "").length > 50,
   `${map2d?.documentation?.value?.length ?? 0} chars`,
+);
+
+// Array class-level variants (docs "Array Class Methods" bullet list),
+// completed on the constant receiver. Line 14 is `  Array.`.
+// deno-lint-ignore no-explicit-any
+const classCompletion: any = await request("textDocument/completion", {
+  textDocument: { uri: mainUri },
+  position: { line: 14, character: 8 },
+});
+const classLabels = (classCompletion ?? []).map((c: { label: string }) =>
+  c.label
+);
+check(
+  "completion: Array. lists class-level variants (filter_map)",
+  classLabels.includes("filter_map") && classLabels.includes("map"),
+  `${classLabels.length} items`,
+);
+check(
+  "diagnostics: Array.new NOT flagged (validity restricted)",
+  !diags.some((d) => d.message.includes("not a method on Array")),
 );
 
 // Hover over a workspace def (spawn_enemy call on line 2, col 3).
