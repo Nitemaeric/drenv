@@ -42,6 +42,11 @@ def fx_demo args
     args.state.fx_queue.delete fx
   end
 end
+
+def sig_demo
+  Geometry.distance({x: 0, y: 0}, {x: 3, y: 4})
+  Geometry.rotate_point({x: 0, y: 0})
+end
 `;
 await Deno.writeTextFile(join(mygame, "app", "main.rb"), MAIN);
 await Deno.writeTextFile(
@@ -231,6 +236,42 @@ check(
 check(
   "diagnostics: Array.new NOT flagged (validity restricted)",
   !diags.some((d) => d.message.includes("not a method on Array")),
+);
+
+// Signature help inside the second argument of Geometry.distance (line 24).
+// deno-lint-ignore no-explicit-any
+const sig: any = await request("textDocument/signatureHelp", {
+  textDocument: { uri: mainUri },
+  position: { line: 24, character: 36 },
+});
+check(
+  "signatureHelp: Geometry.distance(point_one, point_two)",
+  (sig?.signatures?.[0]?.label ?? "").includes("point_one, point_two") &&
+    sig?.signatures?.[0]?.parameters?.length === 2,
+  sig?.signatures?.[0]?.label ?? "none",
+);
+check(
+  "signatureHelp: active parameter tracks the cursor",
+  sig?.activeParameter === 1,
+  `active=${sig?.activeParameter}`,
+);
+
+// Arity: rotate_point(point, angle, around = nil) called with 1 argument.
+const arity = diags.find((d) => d.message.includes("rotate_point expects"));
+check(
+  "diagnostics: arity — rotate_point expects 2..3, got 1",
+  !!arity && arity.message.includes("2..3") && arity.message.includes("got 1"),
+  arity?.message ?? "missing",
+);
+
+// Completion detail carries the signature.
+const distItem = (completion ?? []).find(
+  (c: { label: string }) => c.label === "distance",
+);
+check(
+  "completion: detail shows the signature",
+  distItem?.detail === "distance(point_one, point_two)",
+  distItem?.detail ?? "none",
 );
 
 const perf = diags.find((d) => d.code === "array-manipulation");

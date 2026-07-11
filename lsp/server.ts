@@ -24,7 +24,43 @@ const initParser = async () => {
 
 // --- engine API index (derived from the installed DragonRuby) ---------------
 
-type ApiEntry = { label: string; doc: string };
+type Param = { label: string; kind: "required" | "optional" | "rest" };
+type ApiEntry = {
+  label: string;
+  doc: string;
+  params?: Param[];
+  signature?: string;
+};
+
+const extractParams = (method: Node): Param[] => {
+  const parameters = method.childForFieldName("parameters");
+  if (!parameters) return [];
+
+  const params: Param[] = [];
+  for (let i = 0; i < parameters.namedChildCount; i++) {
+    const child = parameters.namedChild(i)!;
+    switch (child.type) {
+      case "identifier":
+        params.push({ label: child.text, kind: "required" });
+        break;
+      case "optional_parameter":
+        params.push({ label: child.text, kind: "optional" });
+        break;
+      case "keyword_parameter":
+        params.push({ label: child.text, kind: "optional" });
+        break;
+      case "splat_parameter":
+      case "hash_splat_parameter":
+        params.push({ label: child.text, kind: "rest" });
+        break;
+        // block parameters aren't part of the positional signature
+    }
+  }
+  return params;
+};
+
+const renderSignature = (name: string, params: Param[]): string =>
+  `${name}(${params.map((p) => p.label).join(", ")})`;
 
 // Receiver chain -> completions. `Geometry`/`Easing` are parsed out of the
 // installed engine's own Ruby source; the `args` chains are curated for the
@@ -83,7 +119,13 @@ const indexEngineModule = async (dir: string, file: string, name: string) => {
           docLines.unshift(prev.text.replace(/^#\s?/, ""));
           prev = prev.previousNamedSibling;
         }
-        entries.push({ label: method, doc: docLines.join("\n") });
+        const params = extractParams(node);
+        entries.push({
+          label: method,
+          doc: docLines.join("\n"),
+          params,
+          signature: renderSignature(method, params),
+        });
       }
     }
     for (let i = 0; i < node.namedChildCount; i++) visit(node.namedChild(i)!);
@@ -373,6 +415,46 @@ const diagnostics = (uri: string): unknown[] => {
             receiver!.text
           } (DragonRuby ${engineLabel})`,
         });
+      } else if (known && method) {
+        const entry = known.find((e) => e.label === method.text);
+        const argsNode = node.childForFieldName("arguments");
+        if (entry?.params && argsNode) {
+          // Contiguous trailing keyword pairs collapse into one hash argument.
+          const children = [];
+          for (let i = 0; i < argsNode.namedChildCount; i++) {
+            const child = argsNode.namedChild(i)!;
+            if (child.type !== "block_argument") children.push(child);
+          }
+          while (
+            children.length > 1 &&
+            children[children.length - 1].type === "pair" &&
+            children[children.length - 2].type === "pair"
+          ) {
+            children.pop();
+          }
+          const count = children.length;
+
+          const required = entry.params.filter((p) =>
+            p.kind === "required"
+          ).length;
+          const hasRest = entry.params.some((p) => p.kind === "rest");
+          const max = hasRest ? Infinity : entry.params.length;
+
+          if (count < required || count > max) {
+            const expected = hasRest
+              ? `at least ${required}`
+              : required === entry.params.length
+              ? `${required}`
+              : `${required}..${entry.params.length}`;
+            out.push({
+              range: nodeRange(argsNode),
+              severity: 2,
+              source: "drenv",
+              message: `${receiver!.text}.${method.text} expects ${expected} ` +
+                `argument(s) — \`${entry.signature}\` — got ${count}`,
+            });
+          }
+        }
       }
     }
 
@@ -563,6 +645,7 @@ const completions = (uri: string, pos: Pos): unknown[] => {
       return entries.map((e) => ({
         label: e.label,
         kind: 2, // Method
+        detail: e.signature,
         documentation: { kind: "markdown", value: e.doc },
       }));
     }
@@ -666,6 +749,58 @@ const references = (uri: string, pos: Pos): Location[] => {
   return out;
 };
 
+// --- signature help ------------------------------------------------------------
+
+const entryFor = (receiver: string, method: string): ApiEntry | undefined =>
+  api.get(receiver)?.find((e) => e.label === method);
+
+const beforeOrAt = (a: Pos, row: number, column: number): boolean =>
+  row < a.line || (row === a.line && column <= a.character);
+
+const signatureHelp = (uri: string, pos: Pos): unknown => {
+  const tree = fileTree.get(uri);
+  if (!tree) return null;
+
+  let node: Node | null = tree.rootNode.descendantForPosition({
+    row: pos.line,
+    column: Math.max(0, pos.character - 1),
+  });
+  while (node && node.type !== "call") node = node.parent;
+  if (!node) return null;
+
+  const receiver = node.childForFieldName("receiver")?.text;
+  const method = node.childForFieldName("method")?.text;
+  if (!receiver || !method) return null;
+
+  const entry = entryFor(receiver, method);
+  if (!entry?.params?.length) return null;
+
+  // Active parameter: how many arguments end before the cursor.
+  let active = 0;
+  const argsNode = node.childForFieldName("arguments");
+  if (argsNode) {
+    for (let i = 0; i < argsNode.namedChildCount; i++) {
+      const child = argsNode.namedChild(i)!;
+      if (beforeOrAt(pos, child.endPosition.row, child.endPosition.column)) {
+        active = i + 1;
+      } else {
+        active = i;
+        break;
+      }
+    }
+  }
+
+  return {
+    signatures: [{
+      label: `${receiver}.${entry.signature}`,
+      documentation: { kind: "markdown", value: entry.doc },
+      parameters: entry.params.map((p) => ({ label: p.label })),
+    }],
+    activeSignature: 0,
+    activeParameter: Math.min(active, entry.params.length - 1),
+  };
+};
+
 // --- LSP plumbing (JSON-RPC over stdio) ----------------------------------------
 
 const encoder = new TextEncoder();
@@ -705,6 +840,7 @@ const handle = async (msg: any) => {
         capabilities: {
           textDocumentSync: 1, // full
           completionProvider: { triggerCharacters: ["."] },
+          signatureHelpProvider: { triggerCharacters: ["(", ","] },
           hoverProvider: true,
           definitionProvider: true,
           referencesProvider: true,
@@ -726,6 +862,13 @@ const handle = async (msg: any) => {
 
     case "textDocument/completion":
       await respond(id, completions(params.textDocument.uri, params.position));
+      break;
+
+    case "textDocument/signatureHelp":
+      await respond(
+        id,
+        signatureHelp(params.textDocument.uri, params.position),
+      );
       break;
 
     case "textDocument/hover":
