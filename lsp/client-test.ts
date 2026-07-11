@@ -51,6 +51,10 @@ end
 def shape_demo
   Geometry.distance({x: 0}, {x: 3, y: 4})
 end
+
+def kwarg_demo
+  Geometry.rect_navigate rec: {}
+end
 `;
 await Deno.writeTextFile(join(mygame, "app", "main.rb"), MAIN);
 await Deno.writeTextFile(
@@ -280,12 +284,33 @@ check(
 
 // Shape verification: derived from the engine body (distance reads .x/.y),
 // checked against hash-literal arguments.
-const shapes = diags.filter((d) => d.message.includes("is missing"));
+const shapes = diags.filter((d) => d.message.includes("is missing `."));
 check(
   "diagnostics: shape — {x: 0} missing .y for point_one",
   shapes.length === 1 && shapes[0].message.includes("`point_one`") &&
     shapes[0].message.includes("`.y`"),
   shapes[0]?.message ?? "missing",
+);
+
+// Kwarg validation: `rec:` is not a keyword of rect_navigate, and the
+// required keywords rect:/rects: are missing.
+const badKwarg = diags.find((d) =>
+  d.message.includes("`rec:` is not a keyword")
+);
+check(
+  "diagnostics: unknown kwarg rec: names the accepted keywords",
+  !!badKwarg && badKwarg.message.includes("rect:") &&
+    badKwarg.message.includes("rects:"),
+  badKwarg?.message?.slice(0, 90) ?? "missing",
+);
+const missingKw = diags.find((d) =>
+  d.message.includes("missing required keyword")
+);
+check(
+  "diagnostics: missing required keywords rect:, rects:",
+  !!missingKw && missingKw.message.includes("`rect:`") &&
+    missingKw.message.includes("`rects:`"),
+  missingKw?.message?.slice(0, 90) ?? "missing",
 );
 
 const perf = diags.find((d) => d.code === "array-manipulation");
