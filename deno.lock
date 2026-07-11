@@ -27,7 +27,8 @@
     "npm:commander@*": "14.0.3",
     "npm:commander@14": "14.0.3",
     "npm:ora@*": "8.1.1",
-    "npm:ora@^8.1.1": "8.1.1"
+    "npm:ora@^8.1.1": "8.1.1",
+    "npm:web-tree-sitter@0.25.3": "0.25.3"
   },
   "jsr": {
     "@std/assert@1.0.6": {
@@ -202,6 +203,9 @@
       "dependencies": [
         "ansi-regex"
       ]
+    },
+    "web-tree-sitter@0.25.3": {
+      "integrity": "sha512-e0hdXG+nJ18Zd/QJFhSx0DNTSMz7miwUjKyJ/lglTnZo6ke08++BQzXkaeaqnGJFi9qq+nPJg2L8hYAjduToHQ=="
     }
   },
   "remote": {

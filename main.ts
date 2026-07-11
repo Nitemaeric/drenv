@@ -20,6 +20,7 @@ import uninstall from "./commands/uninstall.ts";
 import remove from "./commands/remove.ts";
 import run from "./commands/run.ts";
 import selfUpdate from "./commands/self-update.ts";
+import lsp from "./lsp/server.ts";
 import versions from "./commands/versions.ts";
 
 import { getLatestDrenvVersion } from "./utils/latest-drenv-version.ts";
@@ -249,6 +250,12 @@ program
   .action(actionRunner(bundle));
 
 // --- Managing drenv ---------------------------------------------------------
+
+program
+  .command("lsp")
+  .description("Start the DragonRuby language server (experimental spike)")
+  .helpGroup(PROJECT)
+  .action(lsp);
 
 program
   .command("self-update")
