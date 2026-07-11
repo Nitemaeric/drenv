@@ -30,6 +30,7 @@ type ApiEntry = { label: string; doc: string };
 // installed engine's own Ruby source; the `args` chains are curated for the
 // spike (a full generator is post-spike work).
 const api = new Map<string, ApiEntry[]>();
+const VALIDITY_RECEIVERS = new Set(["Geometry", "Easing"]);
 let engineLabel = "unknown";
 
 const ARGS_CHAINS: Record<string, string[]> = {
@@ -133,6 +134,39 @@ const indexDocsFile = async (dir: string, file: string, key: string) => {
   methodDocs.set(key, docs);
 };
 
+// DragonRuby exposes class-level variants of Array iteration methods
+// (documented as a bullet list, e.g. `Array.filter_map(collection)`).
+const indexArrayClassMethods = async (dir: string) => {
+  let text: string;
+  try {
+    text = await Deno.readTextFile(join(dir, "docs", "api", "array.md"));
+  } catch {
+    return;
+  }
+
+  const section = text.split(/^## `Array` Class Methods$/m)[1];
+  if (!section) return;
+
+  const body = section.split(/^#{1,3} /m)[0];
+  const instanceDocs = methodDocs.get("Array");
+  const entries: ApiEntry[] = [];
+
+  for (const match of body.matchAll(/^- `([\w?!]+)`/gm)) {
+    const name = match[1];
+    const variant =
+      `Class-level variant: \`Array.${name}(collection, ...)\` — ` +
+      `like \`#${name}\`, but a bit faster. Assumes the collection isn't ` +
+      `mutated during iteration.`;
+    const instance = instanceDocs?.get(name);
+    entries.push({
+      label: name,
+      doc: instance ? `${variant}\n\n---\n\n${instance}` : variant,
+    });
+  }
+
+  if (entries.length > 0) api.set("Array", entries);
+};
+
 const buildApiIndex = async () => {
   const version = (await installedVersions())[0];
   if (!version) return;
@@ -158,6 +192,8 @@ const buildApiIndex = async () => {
   await indexDocsFile(dir, "numeric.md", "Numeric");
   await indexDocsFile(dir, "outputs.md", "args.outputs");
   await indexDocsFile(dir, "inputs.md", "args.inputs");
+
+  await indexArrayClassMethods(dir);
 
   // Enrich indexed entries with the markdown docs and surface doc-only
   // methods (e.g. C-implemented ones the Ruby source never mentions).
@@ -257,12 +293,14 @@ const diagnostics = (uri: string): unknown[] => {
       });
     }
 
-    // Method validity — only asserted for receivers we fully know (engine
-    // modules), never for dynamic Ruby, to avoid false positives.
+    // Method validity — only asserted for receivers whose complete surface
+    // we own (engine modules). `Array` etc. have core class methods beyond
+    // the documented variants, so they get completions but never warnings.
     if (node.type === "call") {
       const receiver = node.childForFieldName("receiver");
       const method = node.childForFieldName("method");
-      const known = receiver?.type === "constant" && api.get(receiver.text);
+      const known = receiver?.type === "constant" &&
+        VALIDITY_RECEIVERS.has(receiver.text) && api.get(receiver.text);
       if (known && method && !known.some((e) => e.label === method.text)) {
         out.push({
           range: nodeRange(method),
