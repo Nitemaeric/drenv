@@ -67,6 +67,11 @@ Both feasibility risks retired, everything verified by a scripted LSP client
 3. **Editor integration** — Zed dev extension (`editors/zed/`, Rust→WASM,
    registers a `drenv` server id, resolves the binary from PATH). Publishable to
    Zed's registry as-is.
+4. **Auto-detection (dormant mode)** — at initialize the server checks the
+   workspace for `dragonruby` / `dragonruby.exe` / `mygame`; anything else gets
+   an empty-capabilities response and an idle server. The extension can
+   therefore be enabled for Ruby globally: non-DragonRuby projects are
+   untouched, DragonRuby projects light up with zero per-project config.
 
 ## Design principles (hold these)
 
