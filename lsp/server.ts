@@ -24,7 +24,30 @@ const initParser = async () => {
 
 // --- engine API index (derived from the installed DragonRuby) ---------------
 
-type Param = { label: string; kind: "required" | "optional" | "rest" };
+type Param = {
+  label: string;
+  name: string;
+  kind: "required" | "optional" | "rest";
+  /** Geometric attributes the engine's own body reads off this parameter. */
+  shape?: string[];
+};
+
+// Only geometric attrs count toward a duck shape, so incidental calls the
+// body makes on a param (.merge, .to_radians, ...) don't produce demands.
+const GEOM_ATTRS = new Set([
+  "x",
+  "y",
+  "w",
+  "h",
+  "x2",
+  "y2",
+  "r",
+  "radius",
+  "cx",
+  "cy",
+  "anchor_x",
+  "anchor_y",
+]);
 type ApiEntry = {
   label: string;
   doc: string;
@@ -37,26 +60,70 @@ const extractParams = (method: Node): Param[] => {
   if (!parameters) return [];
 
   const params: Param[] = [];
+  const named = (child: Node) =>
+    child.childForFieldName("name")?.text ?? child.text;
+
   for (let i = 0; i < parameters.namedChildCount; i++) {
     const child = parameters.namedChild(i)!;
     switch (child.type) {
       case "identifier":
-        params.push({ label: child.text, kind: "required" });
+        params.push({ label: child.text, name: child.text, kind: "required" });
         break;
       case "optional_parameter":
-        params.push({ label: child.text, kind: "optional" });
-        break;
       case "keyword_parameter":
-        params.push({ label: child.text, kind: "optional" });
+        params.push({
+          label: child.text,
+          name: named(child),
+          kind: "optional",
+        });
         break;
       case "splat_parameter":
       case "hash_splat_parameter":
-        params.push({ label: child.text, kind: "rest" });
+        params.push({ label: child.text, name: named(child), kind: "rest" });
         break;
         // block parameters aren't part of the positional signature
     }
   }
+
+  deriveShapes(method, params);
   return params;
+};
+
+/** Collects the geometric attrs the method body reads off each parameter. */
+const deriveShapes = (method: Node, params: Param[]) => {
+  const body = method.childForFieldName("body");
+  if (!body) return;
+
+  const byName = new Map(params.map((p) => [p.name, new Set<string>()]));
+  const reassigned = new Set<string>();
+
+  const scan = (n: Node) => {
+    if (n.type === "assignment") {
+      const left = n.childForFieldName("left");
+      if (left?.type === "identifier") reassigned.add(left.text);
+    }
+    if (n.type === "call") {
+      const receiver = n.childForFieldName("receiver");
+      const attr = n.childForFieldName("method");
+      const argsNode = n.childForFieldName("arguments");
+      if (
+        receiver?.type === "identifier" && byName.has(receiver.text) &&
+        attr && GEOM_ATTRS.has(attr.text) &&
+        (!argsNode || argsNode.namedChildCount === 0)
+      ) {
+        byName.get(receiver.text)!.add(attr.text);
+      }
+    }
+    for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
+  };
+  scan(body);
+
+  for (const param of params) {
+    const attrs = byName.get(param.name);
+    if (attrs?.size && !reassigned.has(param.name)) {
+      param.shape = [...attrs].sort();
+    }
+  }
 };
 
 const renderSignature = (name: string, params: Param[]): string =>
@@ -439,6 +506,41 @@ const diagnostics = (uri: string): unknown[] => {
           ).length;
           const hasRest = entry.params.some((p) => p.kind === "rest");
           const max = hasRest ? Infinity : entry.params.length;
+
+          // Shape check: a hash-literal argument must carry the geometric
+          // attrs the engine's own body reads off that parameter. Only
+          // literals are checked — variables would need type inference.
+          const positional = entry.params.filter((p) => p.kind !== "rest");
+          for (let i = 0; i < children.length && i < positional.length; i++) {
+            const arg = children[i];
+            const param = positional[i];
+            if (arg.type !== "hash" || !param.shape) continue;
+
+            const keys = new Set<string>();
+            for (let j = 0; j < arg.namedChildCount; j++) {
+              const pair = arg.namedChild(j)!;
+              if (pair.type !== "pair") {
+                keys.clear();
+                break; // splatted hash contents — can't verify
+              }
+              const key = pair.childForFieldName("key");
+              if (key) keys.add(key.text.replace(/:$/, ""));
+            }
+            if (keys.size === 0) continue;
+
+            const missing = param.shape.filter((attr) => !keys.has(attr));
+            if (missing.length > 0) {
+              out.push({
+                range: nodeRange(arg),
+                severity: 2,
+                source: "drenv",
+                message: `argument ${i + 1} (\`${param.name}\`) is missing ` +
+                  missing.map((m) => `\`.${m}\``).join(", ") +
+                  ` — ${receiver!.text}.${method.text} reads ` +
+                  param.shape.map((s) => `${param.name}.${s}`).join(", "),
+              });
+            }
+          }
 
           if (count < required || count > max) {
             const expected = hasRest
