@@ -225,6 +225,14 @@ export default function LspDocs() {
             the engine version your project actually uses, offline, including
             your vendored dependencies.
           </p>
+          <p class="mt-3 text-sm text-white/55">
+            Requires drenv <code class="text-rose-400">0.17.0</code>{" "}
+            or newer — check with{" "}
+            <code class="text-rose-400">drenv --version</code>, upgrade with
+            {" "}
+            <code class="text-rose-400">drenv self-update</code>. On older
+            versions editors report the server crashing on startup.
+          </p>
 
           <div class="mt-16 space-y-16">
             {SHOWCASES.map((s) => (

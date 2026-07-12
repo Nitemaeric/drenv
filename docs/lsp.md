@@ -9,6 +9,10 @@ actually uses.
 drenv lsp        # speaks LSP over stdio (used by editors, not by hand)
 ```
 
+Requires **drenv 0.17.0 or newer** — check with `drenv --version`, upgrade with
+`drenv self-update`. On older versions the `lsp` command doesn't exist, so
+editors report the server crashing on startup.
+
 ## What you get
 
 - **Completions** — the full `args.*` tree (`args.outputs.`, `args.inputs.`,
@@ -68,6 +72,8 @@ config lives in [`editors/nvim/README.md`](../editors/nvim/README.md).
 
 ## Troubleshooting
 
+- **"Server crashed" or "unknown command 'lsp'"?** Your drenv is older than
+  0.17.0 — run `drenv self-update`.
 - **No engine intelligence?** Install a DragonRuby version first
   (`drenv install`). Workspace features (your code, vendored libraries) work
   without one.

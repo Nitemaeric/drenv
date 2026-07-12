@@ -240,7 +240,8 @@ export default function Docs() {
             <p class="mb-3 text-white/70">
               drenv ships a language server for DragonRuby projects —
               completions, docs, diagnostics, and navigation derived from your
-              installed engine version. Zed and VS Code supported.
+              installed engine version. Zed and VS Code supported. Requires
+              drenv <code class="text-rose-400">0.17.0</code> or newer.
             </p>
             <a href="/docs/lsp" class="text-sm underline hover:text-white/80">
               Set up your editor →
