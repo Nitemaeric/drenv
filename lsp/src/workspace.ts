@@ -4,7 +4,25 @@ import { join, resolve, toFileUrl } from "@std/path";
 import { readLock } from "../../utils/lockfile.ts";
 import { nodeRange } from "./analyze.ts";
 import { type Node, Ruby, type Tree } from "./ruby.ts";
-import type { Def } from "./types.ts";
+import type { Def, Pos } from "./types.ts";
+
+/** A single `textDocument/didChange` edit. A ranged edit patches the stored
+ * text; a change with no `range` is a full-document replacement. */
+export type ContentChange = { range?: { start: Pos; end: Pos }; text: string };
+
+/** UTF-16 offset of an LSP position within `text`. LSP characters are UTF-16
+ * code units, which is exactly JS string indexing, so no re-encoding needed. */
+const offsetAt = (text: string, pos: Pos): number => {
+  let lineStart = 0;
+  for (let line = 0; line < pos.line; line++) {
+    const nl = text.indexOf("\n", lineStart);
+    if (nl === -1) return text.length;
+    lineStart = nl + 1;
+  }
+  const nextNl = text.indexOf("\n", lineStart);
+  const lineEnd = nextNl === -1 ? text.length : nextNl;
+  return Math.min(lineStart + pos.character, lineEnd);
+};
 
 export class Workspace {
   readonly defs = new Map<string, Def[]>();
@@ -108,6 +126,24 @@ export class Workspace {
     };
     visit(tree.rootNode, "");
     return tree;
+  }
+
+  /** Applies ranged `didChange` edits to the stored text, then re-indexes the
+   * file. The def index has no incremental form, so the whole new tree is
+   * re-visited (via indexFile) — cheap next to the parse. Falls back to
+   * treating the uri as empty when it has no stored buffer yet. */
+  applyEdits(uri: string, changes: ContentChange[]): Tree {
+    let text = this.#fileText.get(uri) ?? "";
+    for (const change of changes) {
+      if (change.range === undefined) {
+        text = change.text;
+        continue;
+      }
+      const start = offsetAt(text, change.range.start);
+      const end = offsetAt(text, change.range.end);
+      text = text.slice(0, start) + change.text + text.slice(end);
+    }
+    return this.indexFile(uri, text);
   }
 
   removeFile(uri: string): void {

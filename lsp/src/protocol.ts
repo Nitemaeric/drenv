@@ -60,24 +60,69 @@ export async function* readMessages(
 export class Connection {
   #out: { write(p: Uint8Array): Promise<number> };
   #encoder = new TextEncoder();
+  // Serializes writes: server→client requests are fired without awaiting, so
+  // two frames could otherwise interleave header/body on the wire.
+  #writeQueue: Promise<void> = Promise.resolve();
+  #nextRequestId = 0;
+  #pending = new Map<
+    number | string,
+    { resolve: (r: unknown) => void; reject: (e: unknown) => void }
+  >();
 
   constructor(out: { write(p: Uint8Array): Promise<number> }) {
     this.#out = out;
   }
 
-  async #send(message: unknown): Promise<void> {
+  #send(message: unknown): Promise<void> {
     const body = this.#encoder.encode(JSON.stringify(message));
-    await this.#out.write(
-      this.#encoder.encode(`Content-Length: ${body.length}\r\n\r\n`),
+    const header = this.#encoder.encode(
+      `Content-Length: ${body.length}\r\n\r\n`,
     );
-    await this.#out.write(body);
+    const task = this.#writeQueue.then(async () => {
+      await this.#out.write(header);
+      await this.#out.write(body);
+    });
+    this.#writeQueue = task.catch(() => {});
+    return task;
   }
 
   respond(id: number | string, result: unknown): Promise<void> {
     return this.#send({ jsonrpc: "2.0", id, result });
   }
 
+  error(id: number | string, code: number, message: string): Promise<void> {
+    return this.#send({ jsonrpc: "2.0", id, error: { code, message } });
+  }
+
   notify(method: string, params: unknown): Promise<void> {
     return this.#send({ jsonrpc: "2.0", method, params });
+  }
+
+  /** Server→client request. The read loop must feed replies back through
+   * `handleResponse`; the returned promise must never be awaited inside the
+   * dispatch loop (that would deadlock — the reply arrives on the same loop). */
+  request(method: string, params: unknown): Promise<unknown> {
+    const id = `srv-${this.#nextRequestId++}`;
+    const promise = new Promise<unknown>((resolve, reject) => {
+      this.#pending.set(id, { resolve, reject });
+    });
+    this.#send({ jsonrpc: "2.0", id, method, params }).catch((e) => {
+      this.#pending.get(id)?.reject(e);
+      this.#pending.delete(id);
+    });
+    return promise;
+  }
+
+  /** Resolves a pending server→client request from an incoming response.
+   * Returns true when the id matched one of ours (so the loop skips dispatch). */
+  handleResponse(msg: RpcMessage): boolean {
+    if (msg.id === undefined) return false;
+    const p = this.#pending.get(msg.id);
+    if (!p) return false;
+    this.#pending.delete(msg.id);
+    const err = (msg as { error?: unknown }).error;
+    if (err !== undefined) p.reject(err);
+    else p.resolve(msg.result);
+    return true;
   }
 }
