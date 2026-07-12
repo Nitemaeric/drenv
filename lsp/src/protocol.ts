@@ -43,7 +43,16 @@ export async function* readMessages(
 
       const body = decoder.decode(buffer.slice(headerEnd + 4, total));
       buffer = buffer.slice(total);
-      yield JSON.parse(body) as RpcMessage;
+      let message: RpcMessage;
+      try {
+        message = JSON.parse(body) as RpcMessage;
+      } catch (error) {
+        // A malformed frame (bad JSON, or an empty body from a missing/zero
+        // Content-Length) must not kill the reader — skip it and stay framed.
+        console.error("drenv-lsp: dropping malformed message:", error);
+        continue;
+      }
+      yield message;
     }
   }
 }

@@ -25,6 +25,17 @@ const concat = (parts: Uint8Array[]): Uint8Array => {
   return out;
 };
 
+const rawFrame = (body: string, header?: string): Uint8Array => {
+  const bodyBytes = enc.encode(body);
+  const head = enc.encode(
+    (header ?? `Content-Length: ${bodyBytes.length}`) + "\r\n\r\n",
+  );
+  const out = new Uint8Array(head.length + bodyBytes.length);
+  out.set(head);
+  out.set(bodyBytes, head.length);
+  return out;
+};
+
 const streamOf = (chunks: Uint8Array[]): ReadableStream<Uint8Array> =>
   new ReadableStream({
     start(controller) {
@@ -67,6 +78,36 @@ describe("readMessages", () => {
     ];
     const single = concat(msgs.map(frame));
     assertEquals(await collect(streamOf([single])), msgs);
+  });
+
+  it("skips a frame with invalid JSON without throwing", async () => {
+    const good: RpcMessage = { jsonrpc: "2.0", id: 1, method: "ok" };
+    const bytes = concat([
+      rawFrame("{ not json"),
+      frame(good),
+    ]);
+    assertEquals(await collect(streamOf([bytes])), [good]);
+  });
+
+  it("skips a frame with an empty body (missing Content-Length)", async () => {
+    const good: RpcMessage = { jsonrpc: "2.0", id: 2, method: "ok" };
+    // No Content-Length header → length defaults to 0 → empty body.
+    const bytes = concat([
+      rawFrame("", "Content-Type: application/json"),
+      frame(good),
+    ]);
+    assertEquals(await collect(streamOf([bytes])), [good]);
+  });
+
+  it("recovers from a malformed frame split across chunks", async () => {
+    const good: RpcMessage = { jsonrpc: "2.0", id: 3, method: "ok" };
+    const bad = rawFrame("nope");
+    const bytes = concat([bad, frame(good)]);
+    const cut = bad.length - 1;
+    assertEquals(
+      await collect(streamOf([bytes.slice(0, cut), bytes.slice(cut)])),
+      [good],
+    );
   });
 
   it("reassembles multi-byte UTF-8 straddling a chunk boundary", async () => {

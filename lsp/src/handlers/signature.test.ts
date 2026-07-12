@@ -30,6 +30,7 @@ end
 const FIXTURE = `def sig_demo
   Geometry.distance({x: 0, y: 0}, {x: 3, y: 4})
   Geometry.rotate_point point_a, angle_b
+  Geometry.rotate_point(1, 2, 3, 4)
   Geometry.distance()
   local.thing(1, 2)
 end
@@ -72,7 +73,10 @@ const distanceLine = FIXTURE.split("\n").findIndex((l) =>
   l.includes("Geometry.distance({")
 );
 const rotateLine = FIXTURE.split("\n").findIndex((l) =>
-  l.includes("rotate_point")
+  l.includes("rotate_point point_a")
+);
+const overArgLine = FIXTURE.split("\n").findIndex((l) =>
+  l.includes("rotate_point(1, 2, 3, 4)")
 );
 
 describe("signatureHelp", () => {
@@ -121,13 +125,16 @@ describe("signatureHelp", () => {
   });
 
   it("clamps the active parameter to the last one", () => {
-    const line = FIXTURE.split("\n")[rotateLine];
+    // Four arguments against a three-param signature drives the raw active
+    // index to 4; without the clamp activeParameter would exceed the last
+    // parameter (index 2).
+    const line = FIXTURE.split("\n")[overArgLine];
     const sig: Sig = signatureHelp(ctx, URI, {
-      line: rotateLine,
+      line: overArgLine,
       character: line.length, // past every argument
     });
-    // point, angle, around = nil -> at most index 2.
-    assert(sig.activeParameter <= 2);
+    assertEquals(sig.signatures[0].parameters.length, 3);
+    assertEquals(sig.activeParameter, 2);
   });
 
   it("returns null when the receiver has no engine entry", () => {
