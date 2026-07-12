@@ -170,6 +170,81 @@ function DiagnosticsMock() {
   );
 }
 
+type Ref = { loc: string; code: string; current?: boolean };
+const REFERENCES: Ref[] = [
+  {
+    loc: "lib/conjuration/animation.rb:233",
+    code: "def play(name)",
+    current: true,
+  },
+  { loc: "app/scenes/hero.rb:12", code: "@hero_anim.play(:walk)" },
+  { loc: "app/scenes/hero.rb:27", code: "@hero_anim.play(:idle)" },
+];
+
+function NavigationMock() {
+  return (
+    <Editor file="mygame/app/scenes/hero.rb">
+      <div>
+        <span class="text-zinc-100">@hero_anim.</span>
+        <span class="cursor-pointer text-sky-300 underline decoration-sky-300/60 underline-offset-4">
+          play
+        </span>
+        <span class="text-zinc-100">(:walk)</span>
+      </div>
+      <div class="mt-2 w-96 max-w-full overflow-hidden rounded-lg border border-white/15 bg-zinc-900 shadow-xl">
+        <div class="border-b border-white/10 px-3 py-1.5 text-[11px] tracking-wide text-white/45">
+          References · 3
+        </div>
+        {REFERENCES.map((r) => (
+          <div
+            class={`flex items-baseline gap-3 px-3 py-1 text-[12px] ${
+              r.current ? "bg-sky-500/15" : ""
+            }`}
+          >
+            <span class="whitespace-nowrap text-white/40">{r.loc}</span>
+            <span class="ml-auto whitespace-nowrap text-zinc-100">
+              {r.code}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Editor>
+  );
+}
+
+function ManifestMock() {
+  return (
+    <Editor file="mygame/drenv.toml">
+      <div>
+        <span class="text-zinc-100">[package]</span>
+      </div>
+      <div>
+        <span class="text-sky-300">name</span>
+        <span class="text-zinc-100">{" = "}</span>
+        <span class="text-emerald-300">"my_game"</span>
+      </div>
+      <div>
+        <Wavy>
+          <span class="text-sky-300">entrypint</span>
+        </Wavy>
+        <span class="text-zinc-100">{" = "}</span>
+        <span class="text-emerald-300">"app/game.rb"</span>
+      </div>
+      <div class="mt-2 w-96 max-w-full rounded-lg border border-amber-400/30 bg-zinc-900 p-3 text-[12px] leading-5 shadow-xl">
+        <div class="text-white/80">
+          <span class="text-amber-300">⚠</span> unknown key{" "}
+          <code class="text-rose-400">entrypint</code> in [package] — known:
+          {" "}
+          <code class="text-rose-400">root</code>,{" "}
+          <code class="text-rose-400">entrypoint</code>,{" "}
+          <code class="text-rose-400">include</code>
+        </div>
+        <div class="mt-1 text-white/40">drenv</div>
+      </div>
+    </Editor>
+  );
+}
+
 type Showcase = {
   title: string;
   desc: string;
@@ -200,6 +275,18 @@ const SHOWCASES: Showcase[] = [
     desc:
       "Unknown engine methods, wrong argument counts, unknown or missing keywords, duck-shape checks, and performance hints linked to the engine's shipped guide. Warnings only fire when the server fully owns the receiver — a squiggle means something is actually wrong.",
     mock: DiagnosticsMock,
+  },
+  {
+    title: "Navigation",
+    desc:
+      "Go to definition and references across mygame/ and vendor/, resolved the way Ruby dispatches: own class, superclass chain, then same file. Locals stay method-scoped, and if a library you're developing is vendored into the same workspace, results point at the editable source — not the vendored copy.",
+    mock: NavigationMock,
+  },
+  {
+    title: "drenv.toml",
+    desc:
+      "Validation and key completion for the dependency manifest, from the same schema the CLI uses — typos and unknown sources get flagged before you ever run drenv bundle.",
+    mock: ManifestMock,
   },
 ];
 
@@ -249,24 +336,6 @@ export default function LspDocs() {
               </section>
             ))}
           </div>
-
-          <section class="mt-16 grid gap-4 sm:grid-cols-2">
-            <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
-              <div class="font-semibold">Navigation</div>
-              <p class="mt-2 text-sm leading-snug text-white/70">
-                Go to definition and references across mygame/ and vendor/,
-                resolved the way Ruby dispatches: own class, superclass chain,
-                then same file. Locals stay method-scoped.
-              </p>
-            </div>
-            <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
-              <div class="font-semibold">drenv.toml</div>
-              <p class="mt-2 text-sm leading-snug text-white/70">
-                Validation and key completion for the dependency manifest, from
-                the same schema the CLI uses.
-              </p>
-            </div>
-          </section>
 
           <section class="mt-16">
             <h2 class="mb-6 text-2xl font-semibold tracking-tight">
