@@ -61,7 +61,10 @@ end
 # @param args [GTK::Args] the tick args
 # @param difficulty [Integer] wave scaling factor
 # @return [Array] the spawned enemies
-# @note Call at most once per tick.
+# @raise [ArgumentError] if difficulty is negative
+# @note Call at most once per tick. Modes:
+#   - +:loop+ repeats forever
+#   - +:once+ holds the last frame
 # @example
 #   spawn_wave args, 3
 def spawn_wave args, difficulty
@@ -72,6 +75,18 @@ module Fx
   #
   # @param intensity [Float] how hard to shake
   class Shaker
+    # Builds a shaker.
+    #
+    # @param intensity [Float] initial strength
+    # @see Fx::Shaker
+    def initialize intensity
+    end
+  end
+
+  class Fader
+    # Builds a fader.
+    def initialize
+    end
   end
 end
 `;
@@ -333,10 +348,12 @@ check(
 );
 
 // YARD docs: hover on the spawn_wave def renders tags as markdown.
+const lineOf = (needle: string) =>
+  MAIN.split("\n").findIndex((l) => l.includes(needle));
 // deno-lint-ignore no-explicit-any
 const yardHover: any = await request("textDocument/hover", {
   textDocument: { uri: mainUri },
-  position: { line: 44, character: 6 },
+  position: { line: lineOf("def spawn_wave"), character: 6 },
 });
 const yardDoc = yardHover?.contents?.value ?? "";
 check(
@@ -345,9 +362,15 @@ check(
     yardDoc.includes("**Parameters**") &&
     yardDoc.includes("`difficulty` (`Integer`)") &&
     yardDoc.includes("**Returns**") &&
+    yardDoc.includes("**Raises** (`ArgumentError`)") &&
     yardDoc.includes("> **Note:**") &&
     yardDoc.includes("```ruby"),
   `${yardDoc.length} chars`,
+);
+check(
+  "yard: @note continuation lines stay inside the blockquote (+code+ -> `code`)",
+  yardDoc.includes("\n> - `:loop` repeats forever") &&
+    yardDoc.includes("\n> - `:once` holds the last frame"),
 );
 
 // YARD docs on a class whose comment block tree-attaches to the enclosing
@@ -366,6 +389,31 @@ check(
   classDoc.includes("Coordinates screen shake") &&
     classDoc.includes("`intensity` (`Float`)"),
   `${classDoc.length} chars`,
+);
+check(
+  "hover: def site shows the qualified name",
+  classDoc.includes("**Fx::Shaker**"),
+);
+
+// Same-named defs (initialize): hovering one def must show ITS container and
+// ITS doc — not a merged list with an arbitrary winner's doc.
+const shakerInitLine = lineOf("def initialize intensity");
+// deno-lint-ignore no-explicit-any
+const initHover: any = await request("textDocument/hover", {
+  textDocument: { uri: mainUri },
+  position: { line: shakerInitLine, character: 10 },
+});
+const initDoc = initHover?.contents?.value ?? "";
+check(
+  "hover: same-named def resolves to its own container and doc",
+  initDoc.includes("**Fx::Shaker#initialize**") &&
+    initDoc.includes("Builds a shaker") &&
+    !initDoc.includes("Builds a fader"),
+  `${initDoc.length} chars`,
+);
+check(
+  "yard: @see renders as a link when the constant is indexed",
+  initDoc.includes("_See:_ [Fx::Shaker](file://"),
 );
 
 const perf = diags.find((d) => d.code === "array-manipulation");

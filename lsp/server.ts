@@ -336,6 +336,9 @@ const buildApiIndex = async () => {
 type Location = {
   uri: string;
   range: { start: Pos; end: Pos };
+  container?: string; // enclosing namespace, e.g. "Conjuration::Animation"
+  kind?: "method" | "class" | "module";
+  doc?: string; // raw comment block; rendered lazily
 };
 type Pos = { line: number; character: number };
 
@@ -345,18 +348,40 @@ const fileTree = new Map<string, Tree>();
 
 // --- YARD doc rendering ------------------------------------------------------
 
-/** Docs for workspace definitions, keyed by identifier. */
-const defDocs = new Map<string, string>();
+/** RDoc inline code markup (`+foo+`) → markdown backticks. */
+const inlineMd = (s: string) => s.replace(/\+([^\s+][^+]*?)\+/g, "`$1`");
+
+/** Resolves a `@see Some::Const` reference to a markdown link when the
+ * constant exists in the workspace index. */
+const seeLink = (rest: string): string => {
+  const target = rest.trim().split(/\s+/)[0] ?? "";
+  const leaf = target.split("::").pop() ?? "";
+  const hit = (defs.get(leaf) ?? []).find((c) =>
+    c.kind !== "method" &&
+    (c.container ? `${c.container}::${leaf}` : leaf).endsWith(target)
+  );
+  if (!hit) return `_See:_ ${inlineMd(rest)}`;
+  const trailing = rest.trim().slice(target.length);
+  return `_See:_ [${target}](${hit.uri}#L${hit.range.start.line + 1})${
+    inlineMd(trailing)
+  }`;
+};
+
+const renderCache = new Map<string, string>();
 
 /** Renders a raw comment block (plain or YARD-tagged) as markdown. */
 const renderDoc = (raw: string): string => {
+  const cached = renderCache.get(raw);
+  if (cached) return cached;
+
   const intro: string[] = [];
   const params: string[] = [];
+  const raises: string[] = [];
   const extras: string[] = [];
   const examples: string[][] = [];
   let returns = "";
   let example: string[] | null = null;
-  let continuation: string[] | null = null;
+  let continuation: { arr: string[]; quote: boolean } | null = null;
 
   for (const line of raw.split("\n")) {
     if (example) {
@@ -370,11 +395,14 @@ const renderDoc = (raw: string): string => {
     const tag = line.match(/^@(\w+)\s*(.*)$/);
     if (!tag) {
       if (continuation && line.startsWith("  ")) {
-        continuation[continuation.length - 1] += ` ${line.trim()}`;
+        const text = inlineMd(line.trim());
+        continuation.arr[continuation.arr.length - 1] += continuation.quote
+          ? `\n> ${text}`
+          : ` ${text}`;
         continue;
       }
       continuation = null;
-      intro.push(line);
+      intro.push(inlineMd(line));
       continue;
     }
 
@@ -390,42 +418,59 @@ const renderDoc = (raw: string): string => {
         if (p) {
           params.push(
             `- \`${p[1]}\`${p[2] ? ` (\`${p[2]}\`)` : ""}${
-              p[3] ? ` — ${p[3]}` : ""
+              p[3] ? ` — ${inlineMd(p[3])}` : ""
             }`,
           );
-          continuation = params;
+          continuation = { arr: params, quote: false };
         }
         break;
       }
       case "return": {
         const r = rest.match(/^(?:\[([^\]]*)\])?\s*(.*)$/);
-        returns = r ? `${r[1] ? `(\`${r[1]}\`) ` : ""}${r[2] ?? ""}` : rest;
+        returns = r
+          ? `${r[1] ? `(\`${r[1]}\`) ` : ""}${inlineMd(r[2] ?? "")}`
+          : inlineMd(rest);
+        break;
+      }
+      case "raise": {
+        const r = rest.match(/^(?:\[([^\]]*)\])?\s*(.*)$/);
+        raises.push(
+          r
+            ? `${r[1] ? `(\`${r[1]}\`) ` : ""}${inlineMd(r[2] ?? "")}`
+            : inlineMd(rest),
+        );
         break;
       }
       case "note":
-        extras.push(`> **Note:** ${rest}`);
-        continuation = extras;
+        extras.push(`> **Note:** ${inlineMd(rest)}`);
+        continuation = { arr: extras, quote: true };
         break;
       case "deprecated":
-        extras.push(`> **Deprecated.** ${rest}`);
+        extras.push(`> **Deprecated.** ${inlineMd(rest)}`);
+        continuation = { arr: extras, quote: true };
         break;
       case "see":
-        extras.push(`_See:_ ${rest}`);
+        extras.push(seeLink(rest));
         break;
       default:
-        extras.push(`_@${name}_ ${rest}`);
+        extras.push(`_@${name}_ ${inlineMd(rest)}`);
     }
   }
 
   const sections = [intro.join("\n").trim()];
   if (params.length) sections.push(`**Parameters**\n${params.join("\n")}`);
   if (returns) sections.push(`**Returns** ${returns}`);
+  if (raises.length) {
+    sections.push(raises.map((r) => `**Raises** ${r}`).join("\n\n"));
+  }
   if (extras.length) sections.push(extras.join("\n\n"));
   for (const code of examples) {
     const body = code.join("\n").trim();
     if (body) sections.push("```ruby\n" + body + "\n```");
   }
-  return sections.filter((s) => s.length > 0).join("\n\n");
+  const out = sections.filter((s) => s.length > 0).join("\n\n");
+  renderCache.set(raw, out);
+  return out;
 };
 
 const nodeRange = (node: Node) => ({
@@ -446,14 +491,11 @@ const indexFile = (uri: string, text: string) => {
     else defs.delete(name);
   }
 
-  const visit = (node: Node) => {
+  const visit = (node: Node, container: string) => {
+    let inner = container;
     if (["method", "class", "module"].includes(node.type)) {
       const name = node.childForFieldName("name");
       if (name) {
-        const list = defs.get(name.text) ?? [];
-        list.push({ uri, range: nodeRange(name) });
-        defs.set(name.text, list);
-
         // Comments aren't reliably tree siblings of the def they document (a
         // class's doc block can attach to the enclosing module node), so walk
         // raw lines upward instead.
@@ -463,14 +505,27 @@ const indexFile = (uri: string, text: string) => {
           if (!trimmed.startsWith("#")) break;
           docLines.unshift(trimmed.replace(/^#[ ]?/, ""));
         }
-        if (docLines.length > 0) {
-          defDocs.set(name.text, renderDoc(docLines.join("\n")));
+
+        const list = defs.get(name.text) ?? [];
+        list.push({
+          uri,
+          range: nodeRange(name),
+          kind: node.type as Location["kind"],
+          container: container || undefined,
+          doc: docLines.length > 0 ? docLines.join("\n") : undefined,
+        });
+        defs.set(name.text, list);
+
+        if (node.type !== "method") {
+          inner = container ? `${container}::${name.text}` : name.text;
         }
       }
     }
-    for (let i = 0; i < node.namedChildCount; i++) visit(node.namedChild(i)!);
+    for (let i = 0; i < node.namedChildCount; i++) {
+      visit(node.namedChild(i)!, inner);
+    }
   };
-  visit(tree.rootNode);
+  visit(tree.rootNode, "");
   return tree;
 };
 
@@ -977,13 +1032,16 @@ const completions = (uri: string, pos: Pos): unknown[] => {
     }));
   }
 
-  // Fall back to workspace definitions + engine top-levels.
-  const items: unknown[] = [...defs.keys()].map((name) => {
-    const doc = defDocs.get(name);
+  // Fall back to workspace definitions + engine top-levels. Docs attach only
+  // when unambiguous (same-named defs can document different things).
+  const items: unknown[] = [...defs.entries()].map(([name, locs]) => {
+    const docs = [...new Set(locs.map((l) => l.doc).filter(Boolean))];
     return {
       label: name,
       kind: 3, // Function
-      ...(doc ? { documentation: { kind: "markdown", value: doc } } : {}),
+      ...(docs.length === 1
+        ? { documentation: { kind: "markdown", value: renderDoc(docs[0]!) } }
+        : {}),
     };
   });
   for (const mod of ["Geometry", "Easing"]) {
@@ -1023,24 +1081,57 @@ const hover = (uri: string, pos: Pos): unknown => {
   // Workspace definition?
   const found = defs.get(word);
   if (found?.length) {
-    const where = found
-      .map((f) => fromFileUrl(f.uri).split("/").slice(-2).join("/"))
-      .join(", ");
-    const doc = defDocs.get(word);
-    return {
-      contents: {
-        kind: "markdown",
-        value: `**${word}** — defined in ${where}` +
-          (doc ? `\n\n---\n\n${doc}` : ""),
-      },
-    };
+    const rel = (u: string) => fromFileUrl(u).split("/").slice(-2).join("/");
+    const qualified = (f: Location) =>
+      f.container
+        ? `${f.container}${f.kind === "method" ? "#" : "::"}${word}`
+        : word;
+    const md = (value: string) => ({ contents: { kind: "markdown", value } });
+
+    // Hovering the def itself pins down exactly which one it is.
+    const at = found.find((f) =>
+      f.uri === uri && f.range.start.line === pos.line &&
+      pos.character >= f.range.start.character &&
+      pos.character <= f.range.end.character
+    );
+    if (at) {
+      return md(
+        `**${qualified(at)}** — defined in ${rel(at.uri)}` +
+          (at.doc ? `\n\n---\n\n${renderDoc(at.doc)}` : ""),
+      );
+    }
+
+    // One qualified name (possibly reopened across files): collapse.
+    const names = [...new Set(found.map(qualified))];
+    if (names.length === 1) {
+      const files = [...new Set(found.map((f) => rel(f.uri)))];
+      const where = files.slice(0, 3).join(", ") +
+        (files.length > 3 ? ` (+${files.length - 3} more)` : "");
+      const docs = [...new Set(found.map((f) => f.doc).filter(Boolean))];
+      return md(
+        `**${names[0]}** — defined in ${where}` +
+          (docs.length === 1 ? `\n\n---\n\n${renderDoc(docs[0]!)}` : ""),
+      );
+    }
+
+    // Ambiguous call site: list candidates instead of guessing a doc.
+    const listed = found.slice(0, 5).map((f) =>
+      `- \`${qualified(f)}\` — ${rel(f.uri)}`
+    );
+    const more = found.length > 5 ? `\n- …and ${found.length - 5} more` : "";
+    return md(
+      `**${word}** — ${found.length} definitions\n\n${
+        listed.join("\n")
+      }${more}`,
+    );
   }
   return null;
 };
 
-const definition = (uri: string, pos: Pos): Location[] => {
+const definition = (uri: string, pos: Pos): unknown[] => {
   const word = wordAt(uri, pos);
-  return word ? defs.get(word) ?? [] : [];
+  if (!word) return [];
+  return (defs.get(word) ?? []).map(({ uri, range }) => ({ uri, range }));
 };
 
 const references = (uri: string, pos: Pos): Location[] => {
