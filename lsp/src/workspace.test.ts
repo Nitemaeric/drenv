@@ -132,6 +132,113 @@ describe("Workspace.indexFile", () => {
   });
 });
 
+describe("Workspace.applyEdits", () => {
+  it("applies a ranged insertion and reparses the file", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "class A\nend\n");
+    // Insert a nested method inside the class body (line 1, col 0).
+    ws.applyEdits(uri, [
+      {
+        range: {
+          start: { line: 1, character: 0 },
+          end: { line: 1, character: 0 },
+        },
+        text: "  def go\n  end\n",
+      },
+    ]);
+    assertEquals(
+      ws.fileText(uri),
+      "class A\n  def go\n  end\nend\n",
+    );
+    assertEquals(ws.defs.get("go")![0].container, "A");
+    assert(!ws.fileTree(uri)!.rootNode.hasError);
+  });
+
+  it("applies a ranged deletion", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "class A\n  def go\n  end\nend\n");
+    assert(ws.defs.has("go"));
+    // Delete the two body lines (from line 1 col 0 to line 3 col 0).
+    ws.applyEdits(uri, [
+      {
+        range: {
+          start: { line: 1, character: 0 },
+          end: { line: 3, character: 0 },
+        },
+        text: "",
+      },
+    ]);
+    assertEquals(ws.fileText(uri), "class A\nend\n");
+    assertFalse(ws.defs.has("go"));
+  });
+
+  it("applies several ranged edits in sequence against evolving text", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "a = 1\n");
+    ws.applyEdits(uri, [
+      // "a = 1\n" -> "ab = 1\n"
+      {
+        range: {
+          start: { line: 0, character: 1 },
+          end: { line: 0, character: 1 },
+        },
+        text: "b",
+      },
+      // "ab = 1\n" -> "ab = 12\n"  (offsets recomputed against the patched text)
+      {
+        range: {
+          start: { line: 0, character: 6 },
+          end: { line: 0, character: 6 },
+        },
+        text: "2",
+      },
+    ]);
+    assertEquals(ws.fileText(uri), "ab = 12\n");
+  });
+
+  it("computes character offsets in UTF-16 code units, not bytes", () => {
+    const ws = new Workspace(ruby);
+    // "é" is one UTF-16 unit but two UTF-8 bytes; char 6 sits right after it.
+    // A byte-based offset would land inside the multi-byte sequence.
+    ws.indexFile(uri, "x = 'é'\n");
+    ws.applyEdits(uri, [
+      {
+        range: {
+          start: { line: 0, character: 6 },
+          end: { line: 0, character: 6 },
+        },
+        text: "Z",
+      },
+    ]);
+    assertEquals(ws.fileText(uri), "x = 'éZ'\n");
+  });
+
+  it("treats a change with no range as a full replacement", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "class Old\nend\n");
+    ws.applyEdits(uri, [{ text: "class New\nend\n" }]);
+    assertEquals(ws.fileText(uri), "class New\nend\n");
+    assert(ws.defs.has("New"));
+    assertFalse(ws.defs.has("Old"));
+  });
+
+  it("bumps generation on each edit", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "a = 1\n");
+    const g = ws.generation;
+    ws.applyEdits(uri, [
+      {
+        range: {
+          start: { line: 0, character: 5 },
+          end: { line: 0, character: 5 },
+        },
+        text: "\nb = 2",
+      },
+    ]);
+    assert(ws.generation > g);
+  });
+});
+
 describe("Workspace.removeFile", () => {
   it("drops the file's defs, text, and tree, and bumps generation", () => {
     const ws = new Workspace(ruby);

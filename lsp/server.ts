@@ -21,6 +21,12 @@ export default async function lsp() {
 
   let ctx: Ctx | null = null;
   let dormant = false;
+  let roots: string[] = [];
+  let indexedRoots = new Set<string>();
+
+  // Buffers the editor holds open: their in-memory overlay wins over disk, so
+  // watched-file events must not clobber them.
+  const openUris = new Set<string>();
 
   const publishDiagnostics = (uri: string) =>
     conn.notify("textDocument/publishDiagnostics", {
@@ -33,7 +39,7 @@ export default async function lsp() {
       ? fromFileUrl(params.rootUri)
       : params.rootPath ?? Deno.cwd();
 
-    const roots = await detectProjectDirs(root);
+    roots = await detectProjectDirs(root);
     if (roots.length === 0) {
       dormant = true;
       await conn.respond(id, {
@@ -45,29 +51,92 @@ export default async function lsp() {
 
     const ws = new Workspace(ruby);
     const engine = await EngineIndex.build(ruby);
-    const indexedRoots = new Set([root, ...roots].map((p) => resolve(p)));
+    indexedRoots = new Set([root, ...roots].map((p) => resolve(p)));
     await ws.scan(roots, indexedRoots);
 
     const resolver = new Resolver(ws);
     ctx = { ws, resolver, yard: new YardRenderer(resolver), engine };
 
+    const capabilities: Record<string, unknown> = {
+      textDocumentSync: { openClose: true, change: 2 }, // incremental
+      completionProvider: { triggerCharacters: ["."] },
+      signatureHelpProvider: { triggerCharacters: ["(", ","] },
+      hoverProvider: true,
+      definitionProvider: true,
+      referencesProvider: true,
+    };
+    // Our internals are UTF-16 already; only advertise it when the client asks.
+    if (Array.isArray(params.capabilities?.general?.positionEncodings)) {
+      capabilities.positionEncoding = "utf-16";
+    }
+
     await conn.respond(id, {
-      capabilities: {
-        textDocumentSync: 1, // full
-        completionProvider: { triggerCharacters: ["."] },
-        signatureHelpProvider: { triggerCharacters: ["(", ","] },
-        hoverProvider: true,
-        definitionProvider: true,
-        referencesProvider: true,
-      },
+      capabilities,
       serverInfo: { name: "drenv-lsp", version: "1.0" },
     });
+  };
+
+  // A live game project asks the client to watch the trees drenv owns, so
+  // out-of-editor changes (bundle/add/update, generated files) stay indexed.
+  const registerWatchers = () =>
+    conn.request("client/registerCapability", {
+      registrations: [{
+        id: "drenv-watchers",
+        method: "workspace/didChangeWatchedFiles",
+        registerOptions: {
+          watchers: [
+            { globPattern: "**/*.rb" },
+            { globPattern: "**/drenv.lock" },
+            { globPattern: "**/drenv.toml" },
+          ],
+        },
+      }],
+    }).catch((e) => console.error("drenv-lsp: registerCapability failed:", e));
+
+  const didChangeWatchedFiles = async (params: any) => {
+    if (!ctx) return;
+    let rescan = false;
+    for (const ev of params?.changes ?? []) {
+      const uri: string = ev.uri;
+      const type: number = ev.type; // 1 Created, 2 Changed, 3 Deleted
+      if (uri.endsWith(".rb")) {
+        // An open buffer's overlay is authoritative over disk; skip every watch
+        // event for it, including deletes — dropping a live overlay would leave
+        // hover/completion with empty content until the next didChange.
+        if (openUris.has(uri)) continue;
+        if (type === 3) {
+          ctx.ws.removeFile(uri);
+        } else {
+          try {
+            ctx.ws.indexFile(uri, await Deno.readTextFile(fromFileUrl(uri)));
+          } catch {
+            ctx.ws.removeFile(uri);
+          }
+        }
+      } else if (uri.endsWith("drenv.lock") || uri.endsWith("drenv.toml")) {
+        rescan = true;
+      }
+    }
+
+    if (rescan) {
+      // scan() re-reads from disk, so snapshot and re-apply open overlays.
+      const overlays = new Map<string, string>();
+      for (const u of openUris) {
+        const t = ctx.ws.fileText(u);
+        if (t !== undefined) overlays.set(u, t);
+      }
+      await ctx.ws.scan(roots, indexedRoots);
+      for (const [u, t] of overlays) ctx.ws.indexFile(u, t);
+    }
+
+    for (const u of openUris) await publishDiagnostics(u);
   };
 
   // Closing a buffer with an on-disk twin re-reads it (dropping the unsaved
   // overlay); a buffer with no file on disk is removed entirely — references
   // scans every fileText entry.
   const didClose = async (uri: string) => {
+    openUris.delete(uri);
     if (!ctx) return;
     try {
       const text = await Deno.readTextFile(fromFileUrl(uri));
@@ -81,6 +150,15 @@ export default async function lsp() {
   const dispatch = async (msg: RpcMessage & { params?: any }) => {
     const { id, method, params } = msg;
 
+    if (method === "$/cancelRequest") {
+      // The dispatch loop is fully serialized (`for await ... await dispatch`),
+      // so by the time a $/cancelRequest is read its target has already been
+      // handled and answered — there is nothing in flight left to cancel. Drop
+      // it rather than tracking ids that would never be matched (an unbounded
+      // leak on cancel-heavy clients).
+      return;
+    }
+
     if (dormant) {
       if (method === "exit") Deno.exit(0);
       if (method === "shutdown") return conn.respond(id!, null);
@@ -92,19 +170,35 @@ export default async function lsp() {
       case "initialize":
         return initialize(id!, params);
 
+      case "initialized":
+        // Fire-and-forget: the reply routes back through handleResponse, so
+        // awaiting it here would deadlock the single dispatch loop.
+        if (ctx) registerWatchers();
+        return;
+
       case "textDocument/didOpen":
+        openUris.add(params.textDocument.uri);
         ctx?.ws.indexFile(params.textDocument.uri, params.textDocument.text);
         return publishDiagnostics(params.textDocument.uri);
 
-      case "textDocument/didChange":
-        ctx?.ws.indexFile(
-          params.textDocument.uri,
-          params.contentChanges[0].text,
-        );
-        return publishDiagnostics(params.textDocument.uri);
+      case "textDocument/didChange": {
+        const uri = params.textDocument.uri;
+        const changes = params.contentChanges;
+        if (ctx) {
+          if (changes.length === 1 && changes[0].range === undefined) {
+            ctx.ws.indexFile(uri, changes[0].text); // full-text fallback
+          } else {
+            ctx.ws.applyEdits(uri, changes);
+          }
+        }
+        return publishDiagnostics(uri);
+      }
 
       case "textDocument/didClose":
         return didClose(params.textDocument.uri);
+
+      case "workspace/didChangeWatchedFiles":
+        return didChangeWatchedFiles(params);
 
       case "textDocument/completion":
         return conn.respond(
@@ -151,6 +245,11 @@ export default async function lsp() {
   };
 
   for await (const msg of readMessages(Deno.stdin.readable)) {
+    // A response (id, no method) settles a server→client request; never dispatch.
+    if (msg.method === undefined && msg.id !== undefined) {
+      conn.handleResponse(msg);
+      continue;
+    }
     try {
       await dispatch(msg);
     } catch (error) {

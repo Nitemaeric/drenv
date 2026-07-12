@@ -1,11 +1,28 @@
 import { basename, join } from "@std/path";
 
-import { versionsPath } from "../../constants.ts";
+import { homePath, versionsPath } from "../../constants.ts";
 import { installedVersions } from "../../utils/installed-versions.ts";
+import config from "../../deno.json" with { type: "json" };
 
 import type { Node, Ruby } from "./ruby.ts";
 import type { ApiEntry } from "./types.ts";
 import { extractParams, renderSignature } from "./analyze.ts";
+
+// Compiled-in drenv version — same source of truth main.ts reports.
+const DRENV_VERSION = config.version;
+const DEFAULT_CACHE_DIR = join(homePath, "cache", "lsp");
+
+// The built index serialized as plain data (no tree-sitter objects). Keyed by
+// {drenvVersion, engineVersion} so a drenv upgrade or an engine swap invalidates.
+type CacheFile = {
+  drenvVersion: string;
+  engineVersion: string;
+  api: [string, ApiEntry[]][];
+  methodDocs: [string, [string, string][]][];
+};
+
+const cacheFilePath = (cacheDir: string, label: string): string =>
+  join(cacheDir, `${label}.json`);
 
 // Receiver chain -> completions. `Geometry`/`Easing` are parsed out of the
 // installed engine's own Ruby source; the `args` chains are curated for the
@@ -222,8 +239,22 @@ export class EngineIndex {
   /** Discovers the installed engine (newest version under `versionsPath`).
    * `rootDir`, when given, is used directly as the engine directory and
    * discovery is skipped; a `rootDir` that doesn't exist degrades to the same
-   * empty index as no engine. Never returns null. */
-  static async build(ruby: Ruby, rootDir?: string): Promise<EngineIndex> {
+   * empty index as no engine. Never returns null.
+   *
+   * The built data is cached as JSON under `~/.drenv/cache/lsp/`. The cache is
+   * consulted for a normal (production) build and when an explicit `cacheDir`
+   * override is given, but is skipped when only `rootDir` overrides — so the
+   * unit tests keep exercising the parse path. Options may be passed positional
+   * (`rootDir` string, legacy) or as `{ rootDir?, cacheDir? }`. */
+  static async build(
+    ruby: Ruby,
+    options?: string | { rootDir?: string; cacheDir?: string },
+  ): Promise<EngineIndex> {
+    const rootDir = typeof options === "string" ? options : options?.rootDir;
+    const cacheDir = typeof options === "string"
+      ? undefined
+      : options?.cacheDir;
+
     const index = new EngineIndex(ruby);
 
     let dir: string;
@@ -238,8 +269,83 @@ export class EngineIndex {
       dir = join(versionsPath, version);
     }
 
+    const effectiveCacheDir = cacheDir ??
+      (rootDir === undefined ? DEFAULT_CACHE_DIR : undefined);
+
+    if (
+      effectiveCacheDir !== undefined &&
+      await index.#loadCache(effectiveCacheDir)
+    ) {
+      return index;
+    }
+
     await index.#index(dir);
+
+    if (effectiveCacheDir !== undefined) {
+      await index.#writeCache(effectiveCacheDir);
+    }
+
     return index;
+  }
+
+  /** Populate from the cache file for this label. Returns false (leaving the
+   * index untouched) on a missing file, a version mismatch, or any parse/shape
+   * error — the caller then reparses and rewrites. */
+  async #loadCache(cacheDir: string): Promise<boolean> {
+    let text: string;
+    try {
+      text = await Deno.readTextFile(cacheFilePath(cacheDir, this.#label));
+    } catch {
+      return false;
+    }
+
+    try {
+      const data = JSON.parse(text) as CacheFile;
+      if (
+        data.drenvVersion !== DRENV_VERSION ||
+        data.engineVersion !== this.#label
+      ) {
+        return false;
+      }
+
+      for (const [key, entries] of data.api) {
+        if (typeof key !== "string" || !Array.isArray(entries)) throw 0;
+        for (const e of entries) {
+          if (typeof e.label !== "string" || typeof e.doc !== "string") throw 0;
+        }
+        this.api.set(key, entries);
+      }
+      for (const [key, pairs] of data.methodDocs) {
+        if (typeof key !== "string" || !Array.isArray(pairs)) throw 0;
+        this.#methodDocs.set(key, new Map(pairs));
+      }
+      return true;
+    } catch {
+      this.api.clear();
+      this.#methodDocs.clear();
+      return false;
+    }
+  }
+
+  /** Serialize the built index. Write failures are non-fatal (stderr note). */
+  async #writeCache(cacheDir: string): Promise<void> {
+    try {
+      await Deno.mkdir(cacheDir, { recursive: true });
+      const payload: CacheFile = {
+        drenvVersion: DRENV_VERSION,
+        engineVersion: this.#label,
+        api: [...this.api.entries()],
+        methodDocs: [...this.#methodDocs.entries()].map(
+          ([k, m]) => [k, [...m.entries()]] as [string, [string, string][]],
+        ),
+      };
+      await Deno.writeTextFile(
+        cacheFilePath(cacheDir, this.#label),
+        JSON.stringify(payload),
+      );
+    } catch (err) {
+      console.error(`drenv lsp: engine cache write failed: ${err}`);
+    }
   }
 
   methodDocs(cls: string): Map<string, string> | undefined {

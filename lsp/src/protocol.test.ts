@@ -1,5 +1,5 @@
 import { describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 
 import { Connection, readMessages, type RpcMessage } from "./protocol.ts";
 
@@ -158,5 +158,98 @@ describe("Connection", () => {
       },
     ];
     assertEquals(await collect(streamOf([concat(written)])), expected);
+  });
+
+  it("frames an error response", async () => {
+    const written: Uint8Array[] = [];
+    const conn = new Connection({
+      write(p) {
+        written.push(p.slice());
+        return Promise.resolve(p.length);
+      },
+    });
+
+    await conn.error(7, -32800, "Request cancelled");
+
+    const [msg] = await collect(streamOf([concat(written)]));
+    assertEquals(msg, {
+      jsonrpc: "2.0",
+      id: 7,
+      error: { code: -32800, message: "Request cancelled" },
+      // deno-lint-ignore no-explicit-any
+    } as any);
+  });
+
+  it("serializes interleaved sends so frames never overlap on the wire", async () => {
+    // A slow first write must not let a second frame's bytes race ahead.
+    const written: Uint8Array[] = [];
+    let firstWrite = true;
+    const conn = new Connection({
+      async write(p) {
+        if (firstWrite) {
+          firstWrite = false;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        written.push(p.slice());
+        return p.length;
+      },
+    });
+
+    // Fire the request (not awaited) then a notify, mimicking the server loop.
+    conn.request("client/registerCapability", { registrations: [] });
+    await conn.notify("x", { n: 1 });
+
+    const msgs = await collect(streamOf([concat(written)]));
+    assertEquals(msgs[0].method, "client/registerCapability");
+    assertEquals(msgs[1].method, "x");
+  });
+
+  it("request() resolves when handleResponse feeds back the matching id", async () => {
+    const written: Uint8Array[] = [];
+    const conn = new Connection({
+      write(p) {
+        written.push(p.slice());
+        return Promise.resolve(p.length);
+      },
+    });
+
+    const pending = conn.request("client/registerCapability", { a: 1 });
+    await new Promise((r) => setTimeout(r, 0)); // let the queued write flush
+    const [sent] = await collect(streamOf([concat(written)]));
+    assert(typeof sent.id === "string" && sent.id.startsWith("srv-"));
+
+    // A response with an unrelated id is ignored.
+    assertEquals(
+      conn.handleResponse({ jsonrpc: "2.0", id: "srv-999", result: null }),
+      false,
+    );
+    // The real reply resolves the promise.
+    assertEquals(
+      conn.handleResponse({ jsonrpc: "2.0", id: sent.id!, result: { ok: 1 } }),
+      true,
+    );
+    assertEquals(await pending, { ok: 1 });
+  });
+
+  it("request() rejects when the reply carries an error", async () => {
+    const conn = new Connection({
+      write(p) {
+        return Promise.resolve(p.length);
+      },
+    });
+    const pending = conn.request("m", {});
+    // deno-lint-ignore no-explicit-any
+    const id = `srv-0`;
+    conn.handleResponse(
+      // deno-lint-ignore no-explicit-any
+      { jsonrpc: "2.0", id, error: { code: 1, message: "no" } } as any,
+    );
+    let threw = false;
+    try {
+      await pending;
+    } catch {
+      threw = true;
+    }
+    assert(threw);
   });
 });

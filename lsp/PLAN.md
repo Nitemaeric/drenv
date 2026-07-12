@@ -137,25 +137,23 @@ Files: `lsp/server.ts` (server), `lsp/client-test.ts` (scripted protocol client
 
 ### P1 — Hardening (prereq for any release)
 
-- **Modularize the server.** The spike is a single ~1,800-line file; that was
-  right for proving feasibility and is wrong for maintenance. Split along the
-  seams that already exist: JSON-RPC framing, engine index, workspace index
-  (defs/containers/superclasses), resolution (locals, constants, dispatch), YARD
-  rendering, diagnostics, and the request handlers. Unit-test each module;
-  `client-test.ts` (42 end-to-end checks) becomes the behavior lock — port
-  module by module and the suite must stay green throughout. This is the
-  code-quality gate the rest of the plan sits on.
-- Incremental `didChange` (tree-sitter supports edits; spike reparses fully),
+- **Modularize the server.** [done] Split into `lsp/server.ts` (thin entry) plus
+  `lsp/src/` modules along the seams that already existed — JSON-RPC framing,
+  engine index, workspace index (defs/containers/superclasses), resolution
+  (locals, constants, dispatch), YARD rendering, diagnostics, and the request
+  handlers — each unit-tested, with `client-test.ts` held as the behavior lock
+  throughout. This was the code-quality gate the rest of the plan sits on.
+- [done] Incremental `didChange` (tree-sitter edits, not full reparse),
   `didClose`, `$/cancelRequest`, position-encoding negotiation.
-- Workspace watching: re-index on file create/delete/rename
-  (`workspace/didChangeWatchedFiles`), and re-scan `vendor/` after
-  bundle/add/update runs.
-- **Index caching**: serialize the engine index to
-  `~/.drenv/cache/lsp/<version>.json` at first build; boot becomes a cache read.
-  Invalidate on drenv version or engine version change.
-- Error resilience: a parse or handler failure must never kill the server.
-- Editor matrix pass: Zed (done), Neovim, VS Code (needs a thin extension — same
-  shape as the Zed one).
+- [done] Workspace watching: re-index on file create/delete/rename
+  (`workspace/didChangeWatchedFiles`), and re-scan `vendor/` after a lockfile
+  change (bundle/add/update runs).
+- **Index caching**: [done] the engine index serializes to
+  `~/.drenv/cache/lsp/<version>.json` at first build; boot becomes a cache read,
+  invalidated on drenv version or engine version change.
+- [done] Error resilience: a parse or handler failure never kills the server.
+- Editor matrix pass: Zed (done, field-tested), VS Code (extension built, not
+  yet published), Neovim (config provided in `editors/nvim/`, untested locally).
 
 ### P2 — Full engine index (remove the curated pieces)
 

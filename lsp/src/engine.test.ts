@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
 import { assert, assertEquals } from "@std/assert";
 import { ensureDir } from "@std/fs";
-import { join } from "@std/path";
+import { basename, fromFileUrl, join } from "@std/path";
 
 import { Ruby } from "./ruby.ts";
 import { EngineIndex } from "./engine.ts";
@@ -191,5 +191,168 @@ describe("EngineIndex with no engine (null path)", () => {
     assert(empty.coreMethods("Array")?.includes("map"));
     assertEquals(empty.literalClass('["a"].'), "Array");
     assertEquals([...empty.validityReceivers].sort(), ["Easing", "Geometry"]);
+  });
+});
+
+describe("EngineIndex cache", () => {
+  let denoJson: { version: string };
+
+  const makeFixture = async (): Promise<string> => {
+    const base = await Deno.makeTempDir({ prefix: "drenv-engine-cache-" });
+    const dir = join(base, "9.42");
+    await ensureDir(join(dir, "docs", "oss", "dragon"));
+    await ensureDir(join(dir, "docs", "api"));
+    await Deno.writeTextFile(
+      join(dir, "docs", "oss", "dragon", "geometry.rb"),
+      GEOMETRY_RB,
+    );
+    await Deno.writeTextFile(
+      join(dir, "docs", "api", "geometry.md"),
+      GEOMETRY_MD,
+    );
+    await Deno.writeTextFile(join(dir, "docs", "api", "array.md"), ARRAY_MD);
+    return dir;
+  };
+
+  const cacheFile = (cacheDir: string, dir: string): string =>
+    join(cacheDir, `${basename(dir)}.json`);
+
+  beforeAll(async () => {
+    denoJson = JSON.parse(
+      await Deno.readTextFile(
+        fromFileUrl(new URL("../../deno.json", import.meta.url)),
+      ),
+    );
+  });
+
+  it("serves stale-but-cached data on the second build", async () => {
+    const dir = await makeFixture();
+    const cacheDir = await Deno.makeTempDir({ prefix: "drenv-cache-" });
+
+    const first = await EngineIndex.build(ruby, { rootDir: dir, cacheDir });
+    assert(first.api.get("Geometry")?.some((e) => e.label === "anchor_rect"));
+
+    // Mutate the fixture so a fresh parse would differ from the cache.
+    await Deno.writeTextFile(
+      join(dir, "docs", "oss", "dragon", "geometry.rb"),
+      `module Geometry\n  def only_this(a)\n    a.x\n  end\nend\n`,
+    );
+
+    const second = await EngineIndex.build(ruby, { rootDir: dir, cacheDir });
+    // The cache is served: the removed method is still present, the new one absent.
+    assert(second.api.get("Geometry")?.some((e) => e.label === "anchor_rect"));
+    assert(!second.api.get("Geometry")?.some((e) => e.label === "only_this"));
+
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(cacheDir, { recursive: true });
+  });
+
+  it("preserves params, shapes, signatures and method docs across the cache", async () => {
+    const dir = await makeFixture();
+    const cacheDir = await Deno.makeTempDir({ prefix: "drenv-cache-" });
+
+    await EngineIndex.build(ruby, { rootDir: dir, cacheDir });
+    // Gut the sources so a fresh parse could not reproduce the rich fields;
+    // only the cache can supply them on the second build.
+    await Deno.writeTextFile(
+      join(dir, "docs", "oss", "dragon", "geometry.rb"),
+      `module Geometry\nend\n`,
+    );
+    await Deno.writeTextFile(
+      join(dir, "docs", "api", "geometry.md"),
+      "# Geometry\n",
+    );
+    await Deno.writeTextFile(join(dir, "docs", "api", "array.md"), "# Array\n");
+
+    const cached = await EngineIndex.build(ruby, { rootDir: dir, cacheDir });
+    const intersect = entry(cached, "Geometry", "intersect_rect?");
+    assertEquals(
+      intersect.signature,
+      "intersect_rect?(rect_one, rect_two, tolerance = 0.1)",
+    );
+    assertEquals(intersect.params?.[0].shape, ["h", "w", "x", "y"]);
+    assertEquals(
+      intersect.doc,
+      "Returns the intersection of two rects, or `nil`.",
+    );
+    assertEquals(
+      cached.methodDocs("Array")?.get("each_with_index"),
+      "Iterates with the index.",
+    );
+    assert(entry(cached, "Array", "map").doc.includes("Class-level variant"));
+
+    await Deno.remove(cacheDir, { recursive: true });
+  });
+
+  it("invalidates and reparses on a drenv version bump", async () => {
+    const dir = await makeFixture();
+    const cacheDir = await Deno.makeTempDir({ prefix: "drenv-cache-" });
+
+    await EngineIndex.build(ruby, { rootDir: dir, cacheDir });
+
+    // Rewrite the cache with a stale drenvVersion and a sentinel that a fresh
+    // parse could never produce.
+    const path = cacheFile(cacheDir, dir);
+    await Deno.writeTextFile(
+      path,
+      JSON.stringify({
+        drenvVersion: "0.0.0-stale",
+        engineVersion: basename(dir),
+        api: [["Geometry", [{ label: "sentinel_stale", doc: "x" }]]],
+        methodDocs: [],
+      }),
+    );
+
+    const rebuilt = await EngineIndex.build(ruby, { rootDir: dir, cacheDir });
+    assert(
+      !rebuilt.api.get("Geometry")?.some((e) => e.label === "sentinel_stale"),
+    );
+    assert(
+      rebuilt.api.get("Geometry")?.some((e) => e.label === "intersect_rect?"),
+    );
+
+    // The stale cache was rewritten with the current version.
+    const after = JSON.parse(await Deno.readTextFile(path));
+    assertEquals(after.drenvVersion, denoJson.version);
+
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(cacheDir, { recursive: true });
+  });
+
+  it("falls back cleanly when the cached JSON is corrupt", async () => {
+    const dir = await makeFixture();
+    const cacheDir = await Deno.makeTempDir({ prefix: "drenv-cache-" });
+    await ensureDir(cacheDir);
+
+    await Deno.writeTextFile(cacheFile(cacheDir, dir), "{ not valid json ]");
+
+    const rebuilt = await EngineIndex.build(ruby, { rootDir: dir, cacheDir });
+    assert(
+      rebuilt.api.get("Geometry")?.some((e) => e.label === "intersect_rect?"),
+    );
+
+    // A valid cache was written over the corrupt file.
+    const after = JSON.parse(await Deno.readTextFile(cacheFile(cacheDir, dir)));
+    assertEquals(after.engineVersion, basename(dir));
+
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(cacheDir, { recursive: true });
+  });
+
+  it("skips the cache when only rootDir overrides (no cacheDir)", async () => {
+    const dir = await makeFixture();
+    const first = await EngineIndex.build(ruby, dir);
+    assert(first.api.get("Geometry")?.some((e) => e.label === "anchor_rect"));
+
+    // With no cacheDir the parse path is always taken: a mutation is reflected.
+    await Deno.writeTextFile(
+      join(dir, "docs", "oss", "dragon", "geometry.rb"),
+      `module Geometry\n  def fresh_only(a)\n    a.x\n  end\nend\n`,
+    );
+    const second = await EngineIndex.build(ruby, dir);
+    assert(second.api.get("Geometry")?.some((e) => e.label === "fresh_only"));
+    assert(!second.api.get("Geometry")?.some((e) => e.label === "anchor_rect"));
+
+    await Deno.remove(dir, { recursive: true });
   });
 });

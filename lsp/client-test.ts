@@ -765,5 +765,244 @@ await Deno.remove(mono, { recursive: true }).catch(() => {});
 await pump.catch(() => {});
 await Deno.remove(tmp, { recursive: true }).catch(() => {});
 
+// --- P1 live sync: incremental didChange, watched files, cancellation -------
+// A session that also captures publishDiagnostics per uri and acks any
+// server→client request (e.g. client/registerCapability).
+
+type LiveSession = {
+  // deno-lint-ignore no-explicit-any
+  request: (method: string, params: unknown) => Promise<any>;
+  notify: (method: string, params: unknown) => Promise<void>;
+  // deno-lint-ignore no-explicit-any
+  diagnosticsFor: (uri: string) => any[];
+  close: () => Promise<void>;
+};
+
+const liveSession = (cwd: string): LiveSession => {
+  const proc = new Deno.Command(cmd, {
+    args,
+    cwd,
+    stdin: "piped",
+    stdout: "piped",
+    stderr: "inherit",
+  }).spawn();
+  const w = proc.stdin.getWriter();
+  let id = 5000;
+  let buf = new Uint8Array(0);
+  // deno-lint-ignore no-explicit-any
+  const waiting = new Map<number, (r: any) => void>();
+  // deno-lint-ignore no-explicit-any
+  const lastDiag = new Map<string, any[]>();
+
+  const sendLive = async (message: unknown) => {
+    const body = encoder.encode(JSON.stringify(message));
+    await w.write(encoder.encode(`Content-Length: ${body.length}\r\n\r\n`));
+    await w.write(body);
+  };
+
+  (async () => {
+    for await (const chunk of proc.stdout) {
+      const merged = new Uint8Array(buf.length + chunk.length);
+      merged.set(buf);
+      merged.set(chunk, buf.length);
+      buf = merged;
+      while (true) {
+        const text = decoder.decode(buf);
+        const headerEnd = text.indexOf("\r\n\r\n");
+        if (headerEnd === -1) break;
+        const length = Number(text.match(/Content-Length: (\d+)/i)?.[1] ?? 0);
+        const bodyStart = encoder.encode(text.slice(0, headerEnd + 4)).length;
+        if (buf.length < bodyStart + length) break;
+        const body = JSON.parse(
+          decoder.decode(buf.slice(bodyStart, bodyStart + length)),
+        );
+        buf = buf.slice(bodyStart + length);
+        if (body.method === "textDocument/publishDiagnostics") {
+          lastDiag.set(body.params.uri, body.params.diagnostics);
+        } else if (body.id !== undefined && body.method) {
+          // Server→client request (registerCapability): a good client replies.
+          sendLive({ jsonrpc: "2.0", id: body.id, result: null });
+        } else if (body.id !== undefined && waiting.has(body.id)) {
+          waiting.get(body.id)!(body.result);
+          waiting.delete(body.id);
+        }
+      }
+    }
+  })();
+
+  return {
+    request: (method, params) => {
+      const rid = id++;
+      // deno-lint-ignore no-explicit-any
+      const promise = new Promise<any>((resolve, reject) => {
+        waiting.set(rid, resolve);
+        setTimeout(() => reject(new Error(`timeout: ${method}`)), 15000);
+      });
+      sendLive({ jsonrpc: "2.0", id: rid, method, params });
+      return promise;
+    },
+    notify: (method, params) => sendLive({ jsonrpc: "2.0", method, params }),
+    diagnosticsFor: (uri) => lastDiag.get(uri) ?? [],
+    close: async () => {
+      await sendLive({ jsonrpc: "2.0", method: "exit", params: null });
+      proc.kill();
+    },
+  };
+};
+
+const beat = () => new Promise((r) => setTimeout(r, 400));
+
+const live = await Deno.makeTempDir({ prefix: "drenv-lsp-live-" });
+await ensureDir(join(live, "mygame", "app"));
+// Lines: 0 def tick, 1 helper call, 2 end, 3 blank, 4 def helper, 5 end, 6 blank.
+const LIVE_MAIN = "def tick args\n  helper args\nend\n\ndef helper args\nend\n";
+const liveMainPath = join(live, "mygame", "app", "main.rb");
+await Deno.writeTextFile(liveMainPath, LIVE_MAIN);
+const liveMainUri = toFileUrl(liveMainPath).href;
+
+const liveSess = liveSession(live);
+const liveInit = await liveSess.request("initialize", {
+  processId: null,
+  rootUri: toFileUrl(live).href,
+  capabilities: { general: { positionEncodings: ["utf-16"] } },
+});
+check(
+  "live: initialize advertises incremental sync (openClose + change:2)",
+  liveInit?.capabilities?.textDocumentSync?.change === 2 &&
+    liveInit?.capabilities?.textDocumentSync?.openClose === true,
+  JSON.stringify(liveInit?.capabilities?.textDocumentSync),
+);
+check(
+  "live: positionEncoding negotiated to utf-16 when the client offers it",
+  liveInit?.capabilities?.positionEncoding === "utf-16",
+  liveInit?.capabilities?.positionEncoding ?? "none",
+);
+
+await liveSess.notify("initialized", {});
+await liveSess.notify("textDocument/didOpen", {
+  textDocument: {
+    uri: liveMainUri,
+    languageId: "ruby",
+    version: 1,
+    text: LIVE_MAIN,
+  },
+});
+await beat();
+check(
+  "live: a clean buffer has no syntax error",
+  !liveSess.diagnosticsFor(liveMainUri).some((d) =>
+    d.message.includes("syntax error")
+  ),
+  `${liveSess.diagnosticsFor(liveMainUri).length} diag(s)`,
+);
+
+// Ranged edit that introduces a syntax error (an unclosed def at EOF).
+await liveSess.notify("textDocument/didChange", {
+  textDocument: { uri: liveMainUri, version: 2 },
+  contentChanges: [{
+    range: {
+      start: { line: 6, character: 0 },
+      end: { line: 6, character: 0 },
+    },
+    text: "def broken(",
+  }],
+});
+await beat();
+check(
+  "live: incremental ranged edit surfaces a new syntax-error diagnostic",
+  liveSess.diagnosticsFor(liveMainUri).some((d) =>
+    d.message.includes("syntax error")
+  ),
+  `${liveSess.diagnosticsFor(liveMainUri).length} diag(s)`,
+);
+
+// A second ranged edit deletes exactly that text; the diagnostic clears.
+await liveSess.notify("textDocument/didChange", {
+  textDocument: { uri: liveMainUri, version: 3 },
+  contentChanges: [{
+    range: {
+      start: { line: 6, character: 0 },
+      end: { line: 6, character: "def broken(".length },
+    },
+    text: "",
+  }],
+});
+await beat();
+check(
+  "live: a follow-up ranged edit clears the syntax-error diagnostic",
+  !liveSess.diagnosticsFor(liveMainUri).some((d) =>
+    d.message.includes("syntax error")
+  ),
+  `${liveSess.diagnosticsFor(liveMainUri).length} diag(s)`,
+);
+
+// A ranged insertion at the top shifts every line down by one; hover must
+// still resolve against the recomputed positions.
+await liveSess.notify("textDocument/didChange", {
+  textDocument: { uri: liveMainUri, version: 4 },
+  contentChanges: [{
+    range: {
+      start: { line: 0, character: 0 },
+      end: { line: 0, character: 0 },
+    },
+    text: "\n",
+  }],
+});
+await beat();
+const liveHover = await liveSess.request("textDocument/hover", {
+  textDocument: { uri: liveMainUri },
+  position: { line: 2, character: 4 }, // "helper" call, now one line lower
+});
+check(
+  "live: hover still resolves at a post-edit (shifted) position",
+  (liveHover?.contents?.value ?? "").includes("helper"),
+  (liveHover?.contents?.value ?? "").slice(0, 40),
+);
+
+// Watched files: a .rb created on disk becomes navigable after the event.
+const extraPath = join(live, "mygame", "app", "extra.rb");
+const extraUri = toFileUrl(extraPath).href;
+const beforeCreate = await liveSess.request("textDocument/definition", {
+  textDocument: { uri: extraUri },
+  position: { line: 0, character: 6 },
+});
+check(
+  "live: the new file's defs are absent before the watch event",
+  Array.isArray(beforeCreate) && beforeCreate.length === 0,
+  `${beforeCreate?.length ?? "?"} result(s)`,
+);
+
+await Deno.writeTextFile(extraPath, "def freshly_added args\nend\n");
+await liveSess.notify("workspace/didChangeWatchedFiles", {
+  changes: [{ uri: extraUri, type: 1 }], // 1 = Created
+});
+await beat();
+const afterCreate = await liveSess.request("textDocument/definition", {
+  textDocument: { uri: extraUri },
+  position: { line: 0, character: 6 }, // inside "freshly_added"
+});
+check(
+  "live: didChangeWatchedFiles indexes a created .rb — defs become navigable",
+  Array.isArray(afterCreate) && afterCreate.length === 1 &&
+    afterCreate[0].uri.endsWith("extra.rb") &&
+    afterCreate[0].range.start.line === 0,
+  `${afterCreate?.length ?? 0} result(s)`,
+);
+
+// Cancellation: a bogus id must not disturb the server.
+await liveSess.notify("$/cancelRequest", { id: 999999 });
+const afterCancel = await liveSess.request("textDocument/hover", {
+  textDocument: { uri: liveMainUri },
+  position: { line: 2, character: 4 },
+});
+check(
+  "live: $/cancelRequest for a bogus id leaves the server responsive",
+  (afterCancel?.contents?.value ?? "").includes("helper"),
+  "follow-up request still answered",
+);
+
+await liveSess.close();
+await Deno.remove(live, { recursive: true }).catch(() => {});
+
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} FAILED`);
 Deno.exit(failures === 0 ? 0 : 1);
