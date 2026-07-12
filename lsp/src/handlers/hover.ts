@@ -1,28 +1,8 @@
 import { fromFileUrl } from "@std/path";
 
-import type { Node } from "../ruby.ts";
+import { CORE_CLASSES, literalCoreClass } from "../resolve.ts";
 import type { Def, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
-
-const CORE_CLASSES = new Set(["Array", "Hash", "String", "Numeric", "Symbol"]);
-
-// A literal receiver node names its class outright.
-const literalCore = (n: Node): string | null => {
-  switch (n.type) {
-    case "array":
-      return "Array";
-    case "hash":
-      return "Hash";
-    case "string":
-      return "String";
-    case "integer":
-    case "float":
-      return "Numeric";
-    case "simple_symbol":
-      return "Symbol";
-  }
-  return null;
-};
 
 export const hover = (ctx: Ctx, uri: string, pos: Pos): unknown => {
   const { ws, resolver, yard, engine } = ctx;
@@ -113,7 +93,8 @@ export const hover = (ctx: Ctx, uri: string, pos: Pos): unknown => {
     : null;
   const recv = call?.childForFieldName("receiver") ?? null;
   if (recv) {
-    const cls = literalCore(recv) ?? resolver.receiverType(uri, recv)?.class;
+    const cls = literalCoreClass(recv) ??
+      resolver.receiverType(uri, recv)?.class;
     if (cls) {
       const doc = engine.methodDocs(cls)?.get(word);
       if (doc && CORE_CLASSES.has(cls)) {

@@ -71,21 +71,6 @@ export function firstProse(body: string[]): string {
   return lines.join("\n").trim();
 }
 
-/** name → first-prose doc for every method heading (levels 2-6). Multi-name
- * headings share the one body. First writer wins per name. */
-export function methodHeadingDocs(text: string): Map<string, string> {
-  const docs = new Map<string, string>();
-  for (const h of parseHeadings(text)) {
-    if (h.level < 2) continue;
-    const doc = firstProse(h.body);
-    if (!doc) continue;
-    for (const name of memberNames(h.text)) {
-      if (!docs.has(name)) docs.set(name, doc);
-    }
-  }
-  return docs;
-}
-
 /** Class-level (constant-receiver) method names from a `` `Class` Class Methods ``
  * bullet list — the channel that drives `Array.filter_map` completion. */
 export function classMethodBullets(text: string, className: string): string[] {

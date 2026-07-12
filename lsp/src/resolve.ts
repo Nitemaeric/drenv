@@ -27,6 +27,14 @@ const LITERAL_CLASS: Record<string, string> = {
   simple_symbol: "Symbol",
 };
 
+export const CORE_CLASSES: ReadonlySet<string> = new Set(
+  Object.values(LITERAL_CLASS),
+);
+
+/** A literal receiver node names its core class outright. */
+export const literalCoreClass = (n: Node): string | null =>
+  LITERAL_CLASS[n.type] ?? null;
+
 // `Klass.new` / `Klass::Nested.new` -> the constant path, else null.
 const newTargetPath = (rhs: Node): string | null => {
   if (rhs.type !== "call") return null;
@@ -210,13 +218,7 @@ export class Resolver implements ConstResolver {
       seen.add(ns);
       const hits = found.filter((f) => f.container === ns);
       if (hits.length > 0) return hits;
-      const cls = this.namespaceIndex().get(ns);
-      ns = cls?.superclass
-        ? this.resolveConstName(
-          cls.superclass,
-          ns.split("::").slice(0, -1).join("::"),
-        ) ?? ""
-        : "";
+      ns = this.#superclassOf(ns);
     }
 
     const inFile = found.filter((f) => f.uri === uri);
@@ -417,15 +419,20 @@ export class Resolver implements ConstResolver {
     while (ns && !seen.has(ns)) {
       seen.add(ns);
       chain.push(ns);
-      const cls = this.namespaceIndex().get(ns);
-      ns = cls?.superclass
-        ? this.resolveConstName(
-          cls.superclass,
-          ns.split("::").slice(0, -1).join("::"),
-        ) ?? ""
-        : "";
+      ns = this.#superclassOf(ns);
     }
     return chain;
+  }
+
+  /** The qualified name of `ns`'s direct superclass, resolved from `ns`'s own
+   * enclosing namespace, or "" when it has none / can't be resolved. */
+  #superclassOf(ns: string): string {
+    const cls = this.namespaceIndex().get(ns);
+    if (!cls?.superclass) return "";
+    return this.resolveConstName(
+      cls.superclass,
+      ns.split("::").slice(0, -1).join("::"),
+    ) ?? "";
   }
 
   #ensureMethodIndex(): void {

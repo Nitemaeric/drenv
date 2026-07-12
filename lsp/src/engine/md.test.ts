@@ -9,7 +9,6 @@ import {
   firstProse,
   leadingIdent,
   memberNames,
-  methodHeadingDocs,
   parseHeadings,
 } from "./md.ts";
 
@@ -69,17 +68,6 @@ describe("md.firstProse", () => {
       "One line.\nstill.",
     );
     assertEquals(firstProse(["```ruby", "code", "```"]), "");
-  });
-});
-
-describe("md.methodHeadingDocs", () => {
-  it("maps every method-heading name to its first-prose doc", () => {
-    const docs = methodHeadingDocs(
-      "# Title\n\n## `foo`\n\nFoo does things.\n\n## `bar`, `baz`\n\nShared doc.\n",
-    );
-    assertEquals(docs.get("foo"), "Foo does things.");
-    assertEquals(docs.get("bar"), "Shared doc.");
-    assertEquals(docs.get("baz"), "Shared doc.");
   });
 });
 

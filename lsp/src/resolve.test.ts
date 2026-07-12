@@ -313,6 +313,34 @@ describe("Resolver.methodsOf", () => {
     ws.indexFile(uri, "class A\nend\n");
     assertEquals(new Resolver(ws).methodsOf("Nope"), []);
   });
+
+  it("resolves an unqualified superclass from the subclass's namespace", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "module Game", // 0
+        "  class Entity", // 1
+        "    def base_move", // 2
+        "    end", // 3
+        "  end", // 4
+        "  module Ui", // 5
+        "    class Widget < Entity", // 6
+        "      def draw", // 7
+        "      end", // 8
+        "    end", // 9
+        "  end", // 10
+        "end", // 11
+      ].join("\n"),
+    );
+    const r = new Resolver(ws);
+    // `Entity` is written bare inside Game::Ui but lives at Game::Entity;
+    // #superclassOf must resolve it from the subclass's enclosing namespace.
+    assertEquals(
+      r.methodsOf("Game::Ui::Widget").map((d) => nameOfDef(ws, d)),
+      ["draw", "base_move"],
+    );
+  });
 });
 
 describe("Resolver.receiverType — literal (rule 1)", () => {
