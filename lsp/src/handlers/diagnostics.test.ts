@@ -171,6 +171,25 @@ describe("diagnostics — positional arity", () => {
       messages(diags).join(" | "),
     );
   });
+
+  it("collapses trailing bare pairs into an options hash on a kwarg-less method", () => {
+    // `dot(a, b)` has no keyword params; the idiomatic `dot(a, x: 1, y: 2)`
+    // option hash must not read as three positional args.
+    const diags = run(engine, "Geometry.dot(a, x: 1, y: 2)\n");
+    assert(
+      !has(diags, "positional argument(s)"),
+      messages(diags).join(" | "),
+    );
+  });
+
+  it("still counts a single trailing pair (no options hash to collapse)", () => {
+    // One trailing pair is a lone arg, not a hash — `dot` is short a positional.
+    const diags = run(engine, "Geometry.dot(x: 1)\n");
+    assert(
+      has(diags, "Geometry.dot expects 2 positional argument(s)"),
+      messages(diags).join(" | "),
+    );
+  });
 });
 
 describe("diagnostics — keyword arguments", () => {
@@ -194,6 +213,28 @@ describe("diagnostics — keyword arguments", () => {
         "Geometry.anchor_rect is missing required keyword(s) `anchor_x:` — " +
           "`anchor_rect(rect, anchor_x:, anchor_y: 0.5)`",
       ),
+      messages(diags).join(" | "),
+    );
+  });
+
+  it("normalizes hash-rocket symbol keys for keyword matching", () => {
+    // `:anchor_x => 1` must resolve to the `anchor_x:` keyword, not read as an
+    // unknown/missing one.
+    const diags = run(engine, "Geometry.anchor_rect(r, :anchor_x => 1)\n");
+    assertEquals(messages(diags), []);
+  });
+
+  it("treats **opts as a kwarg forwarder, not a positional argument", () => {
+    // hash_splat neither counts toward positional arity nor leaves required
+    // keywords unsatisfied — the splat may supply them.
+    const diags = run(engine, "Geometry.anchor_rect(r, **opts)\n");
+    assertEquals(messages(diags), []);
+  });
+
+  it("does not emit an arity error when **opts trails positionals", () => {
+    const diags = run(engine, "Geometry.dot(a, b, **opts)\n");
+    assert(
+      !has(diags, "positional argument(s)"),
       messages(diags).join(" | "),
     );
   });

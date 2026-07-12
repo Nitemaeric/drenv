@@ -23,6 +23,10 @@ const MUTATORS = new Set([
 const PERF_GUIDE =
   "https://docs.dragonruby.org/#/guides/troubleshoot-performance?id=array-manipulation";
 
+// Label keys (`anchor_x:`) surface without a colon; hash-rocket symbol keys
+// (`:anchor_x =>`) carry a leading one. Strip both so lookups match param names.
+const normKey = (text: string) => text.replace(/^:/, "").replace(/:$/, "");
+
 // Flags mutation of a collection inside its own `.each` block — the guide's
 // "Array Manipulation" antipattern (collect changes, apply after the loop).
 const mutationDuringIteration = (node: Node, out: unknown[]) => {
@@ -106,9 +110,17 @@ export const diagnostics = (ctx: Ctx, uri: string): unknown[] => {
         const argsNode = node.childForFieldName("arguments");
         if (entry?.params && argsNode) {
           const all: Node[] = [];
+          let hashSplat = false;
           for (let i = 0; i < argsNode.namedChildCount; i++) {
             const child = argsNode.namedChild(i)!;
-            if (child.type !== "block_argument") all.push(child);
+            if (child.type === "block_argument") continue;
+            // `**opts` forwards unknown keywords: it is neither positional nor
+            // a checkable kwarg, so it suppresses both counts below.
+            if (child.type === "hash_splat_argument") {
+              hashSplat = true;
+              continue;
+            }
+            all.push(child);
           }
 
           const keywords = entry.params.filter((p) =>
@@ -132,7 +144,7 @@ export const diagnostics = (ctx: Ctx, uri: string): unknown[] => {
                 break;
               }
               const key = pair.childForFieldName("key");
-              if (key) keys.add(key.text.replace(/:$/, ""));
+              if (key) keys.add(normKey(key.text));
             }
             if (splat || keys.size === 0) return;
             const missing = param.shape.filter((attr) => !keys.has(attr));
@@ -178,7 +190,8 @@ export const diagnostics = (ctx: Ctx, uri: string): unknown[] => {
             const given = new Set<string>();
 
             for (const pair of pairs) {
-              const key = pair.childForFieldName("key")?.text.replace(/:$/, "");
+              const keyText = pair.childForFieldName("key")?.text;
+              const key = keyText === undefined ? undefined : normKey(keyText);
               if (!key) continue;
               given.add(key);
               const param = keywords.find((k) => k.name === key);
@@ -197,9 +210,11 @@ export const diagnostics = (ctx: Ctx, uri: string): unknown[] => {
               }
             }
 
-            const missingRequired = keywords.filter((k) =>
-              k.kind === "keyword" && !given.has(k.name)
-            );
+            const missingRequired = hashSplat
+              ? []
+              : keywords.filter((k) =>
+                k.kind === "keyword" && !given.has(k.name)
+              );
             if (missingRequired.length > 0) {
               out.push({
                 range: nodeRange(argsNode),
