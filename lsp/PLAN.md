@@ -6,9 +6,9 @@
 > self-contained: it captures what the spike proved, the architecture, the
 > design principles, and the phased path to production.
 
-Status: **spike complete, validated** (branch `spike/lsp`, ~700-line server, 21
-scripted client checks passing against the compiled binary, field-tested in Zed
-via a dev extension). Owner: Nitemaeric.
+Status: **spike complete, validated** (branch `spike/lsp`, ~1,800-line server,
+42 scripted client checks passing against the compiled binary, field-tested in
+Zed via a dev extension against the conjuration monorepo). Owner: Nitemaeric.
 
 ---
 
@@ -41,13 +41,18 @@ Both feasibility risks retired, everything verified by a scripted LSP client
 1. **tree-sitter-ruby (WASM) inside `deno compile`** — embedded via `--include`,
    loaded from bytes (`Parser.init({ wasmBinary })` / `Language.load(bytes)`).
    ~2.2 MB added (binary ~74 MB total); ~7 ms per file parse.
-2. **The full LSP surface over stdio** — 21 passing checks:
+2. **The full LSP surface over stdio** — 42 passing checks:
    - **Completions**: engine modules (101 `Geometry.` methods parsed from the
      installed engine source), curated `args.*` chains, mruby core methods on
      literal receivers (`[].` → 54 items), DragonRuby Array class-level variants
      (`Array.filter_map`), workspace + vendored defs.
    - **Docs**: the real markdown from `docs/api/*.md` rides completions and
-     hover (the same content as docs.dragonruby.org, version-matched).
+     hover (the same content as docs.dragonruby.org, version-matched). Workspace
+     comment blocks render as markdown with full YARD support —
+     `@param`/`@return`/`@yield`/`@raise`/`@note`/`@example`/`@see`, RDoc
+     `+code+` spans, multiline tag continuations — and constant references in
+     types and `@see` resolve namespace-relatively (Ruby's lookup order) into
+     clickable file links.
    - **Signatures**: `textDocument/signatureHelp` with active-parameter tracking
      (tree-based, works on paren-less calls); completion `detail` shows
      `distance(point_one, point_two)`.
@@ -64,6 +69,16 @@ Both feasibility risks retired, everything verified by a scripted LSP client
        iteration), Information severity, `codeDescription` linking the guide
    - **Navigation**: go-to-definition and references across `mygame/` and
      `vendor/` (word-boundary references, ctags-quality).
+   - **Container-aware resolution**: definitions record their enclosing
+     namespace, kind, doc, and superclass. Def-site hovers pin the exact
+     definition (`Conjuration::Animation::Clip#initialize`, its own doc); bare
+     calls resolve like Ruby dispatch — enclosing class, then the superclass
+     chain, then same-file — before falling back to a qualified candidate list;
+     reopened namespaces collapse to one entry.
+     `attr_reader`/`attr_writer`/`attr_accessor` index as documented method
+     defs. Parameters, block parameters, and locals resolve within their method
+     (hover shows the `@param` entry; references stay method-scoped); instance
+     variables resolve to their class and borrow a same-named attr's doc.
 3. **Editor integration** — Zed dev extension (`editors/zed/`, Rust→WASM,
    registers a `drenv` server id, resolves the binary from PATH). Publishable to
    Zed's registry as-is.
@@ -122,6 +137,14 @@ Files: `lsp/server.ts` (server), `lsp/client-test.ts` (scripted protocol client
 
 ### P1 — Hardening (prereq for any release)
 
+- **Modularize the server.** The spike is a single ~1,800-line file; that was
+  right for proving feasibility and is wrong for maintenance. Split along the
+  seams that already exist: JSON-RPC framing, engine index, workspace index
+  (defs/containers/superclasses), resolution (locals, constants, dispatch), YARD
+  rendering, diagnostics, and the request handlers. Unit-test each module;
+  `client-test.ts` (42 end-to-end checks) becomes the behavior lock — port
+  module by module and the suite must stay green throughout. This is the
+  code-quality gate the rest of the plan sits on.
 - Incremental `didChange` (tree-sitter supports edits; spike reparses fully),
   `didClose`, `$/cancelRequest`, position-encoding negotiation.
 - Workspace watching: re-index on file create/delete/rename
@@ -152,13 +175,17 @@ Files: `lsp/server.ts` (server), `lsp/client-test.ts` (scripted protocol client
 - **One-hop assignment tracking**: `enemies = []` → Array. Powers
   variable-receiver completions AND extends shape/arity checks to one-hop
   literal variables. Explicitly stop at one hop.
-- **YARD types as an inference input**: the spike already extracts comment
-  blocks above workspace defs and renders YARD tags (`@param`/`@return`/
-  `@note`/`@example`) as hover/completion markdown. The next tier is using
-  `@param`/`@return` _types_ to power workspace shape/arity checks and
-  method-chain completion (`@anim = Animation.new` → `@anim.` completes the
-  class's methods), built on a workspace object model (qualified class → methods
-  map from the existing def index).
+- **YARD types as an inference input**: rendering already resolves types to
+  workspace classes; the next tier is _dispatching_ through them. The motivating
+  case (from field-testing): `camera.ui.view` — trace `ui` to
+  `Conjuration::UIManagement#ui`, read its `@return [UI]`, resolve `view`
+  against `UI`'s methods. One hop of return-type dispatch covers most
+  framework-style chains, plus workspace shape/arity checks and method-chain
+  completion (`@anim = Animation.new` → `@anim.` completes the class's methods),
+  all on the existing container-aware def index.
+- Index singleton methods (`def self.build`) as class-level defs (`UI.build`) —
+  currently absent from the workspace index, so class-method
+  hover/definition/references miss.
 - Tick-reachability gating for perf rules (workspace call graph from the def
   index), so per-frame hints only fire where they're hot.
 - Additional guide rules (each certainty-gated, Information severity):
@@ -211,7 +238,7 @@ Files: `lsp/server.ts` (server), `lsp/client-test.ts` (scripted protocol client
 ## Evidence
 
 - Branch: `spike/lsp` — server, client tests, Zed extension, this plan.
-- 21/21 scripted checks against the compiled binary
+- 42/42 scripted checks against the compiled binary
   (`deno run -A
   lsp/client-test.ts ~/.drenv/bin/drenv-lsp-spike lsp`).
 - Binary cost: +~2.2 MB WASM (74 MB total). Parse: ~7 ms/file. Engine index
