@@ -1,5 +1,5 @@
 import { walk } from "@std/fs";
-import { join, resolve, toFileUrl } from "@std/path";
+import { dirname, join, resolve, toFileUrl } from "@std/path";
 
 import { readLock } from "../../utils/lockfile.ts";
 import { nodeRange } from "./analyze.ts";
@@ -263,6 +263,36 @@ export const detectProjectDirs = async (root: string): Promise<string[]> => {
   }
 
   return dirs;
+};
+
+/**
+ * A DragonRuby engine that ships inside the workspace — the standard layout
+ * where the engine zip is unpacked and the game lives in `mygame/` beside
+ * `docs/oss/dragon/` and `docs/api/`. Returns the engine directory (the one
+ * containing `docs/`) or null. Checked before drenv-managed versions so a
+ * project opened in its own engine folder gets version-matched intelligence
+ * even when drenv manages no copy of that version.
+ */
+export const detectWorkspaceEngine = async (
+  root: string,
+  projectDirs: string[],
+): Promise<string | null> => {
+  const candidates = new Set<string>();
+  // The engine dir is the workspace root (game in mygame/), or one level up
+  // when the game directory itself was opened (root is .../<engine>/mygame).
+  for (const d of [root, ...projectDirs]) {
+    candidates.add(d);
+    candidates.add(dirname(d));
+  }
+  for (const dir of candidates) {
+    try {
+      const s = await Deno.stat(join(dir, "docs", "oss", "dragon"));
+      if (s.isDirectory) return dir;
+    } catch {
+      // no engine here
+    }
+  }
+  return null;
 };
 
 /**

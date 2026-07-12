@@ -4,7 +4,12 @@ import { join, toFileUrl } from "@std/path";
 
 import { writeLock } from "../../utils/lockfile.ts";
 import { Ruby } from "./ruby.ts";
-import { detectProjectDirs, vendorSkips, Workspace } from "./workspace.ts";
+import {
+  detectProjectDirs,
+  detectWorkspaceEngine,
+  vendorSkips,
+  Workspace,
+} from "./workspace.ts";
 
 let ruby: Ruby;
 beforeAll(async () => {
@@ -425,6 +430,45 @@ describe("Workspace.scan", () => {
       const ws = new Workspace(ruby);
       await ws.scan([root], new Set());
       assertEquals(ws.defs.size, 0);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  });
+});
+
+describe("detectWorkspaceEngine", () => {
+  it("finds an engine unpacked at the workspace root (game in mygame/)", async () => {
+    const root = await Deno.makeTempDir();
+    try {
+      await Deno.mkdir(join(root, "docs", "oss", "dragon"), {
+        recursive: true,
+      });
+      await Deno.mkdir(join(root, "mygame"));
+      assertEquals(await detectWorkspaceEngine(root, [root]), root);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  });
+
+  it("finds the engine one level up when the game dir itself is opened", async () => {
+    const engine = await Deno.makeTempDir();
+    try {
+      await Deno.mkdir(join(engine, "docs", "oss", "dragon"), {
+        recursive: true,
+      });
+      const game = join(engine, "mygame");
+      await Deno.mkdir(game);
+      assertEquals(await detectWorkspaceEngine(game, [game]), engine);
+    } finally {
+      await Deno.remove(engine, { recursive: true });
+    }
+  });
+
+  it("returns null when no engine is present (drenv-managed layout)", async () => {
+    const root = await Deno.makeTempDir();
+    try {
+      await Deno.mkdir(join(root, "mygame", "app"), { recursive: true });
+      assertEquals(await detectWorkspaceEngine(root, [root]), null);
     } finally {
       await Deno.remove(root, { recursive: true });
     }

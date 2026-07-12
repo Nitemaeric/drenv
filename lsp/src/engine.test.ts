@@ -302,6 +302,28 @@ describe("EngineIndex with no engine (null path)", () => {
   });
 });
 
+describe("EngineIndex label from a workspace engine", () => {
+  it("reads the version from CHANGELOG-CURR.txt when present", async () => {
+    const base = await Deno.makeTempDir({ prefix: "drenv-ws-engine-" });
+    // Folder name is arbitrary (a raw unzip), so the label must come from the
+    // changelog's leading org-mode heading, not the basename.
+    const dir = join(base, "dragonruby-macos");
+    await ensureDir(join(dir, "docs", "oss", "dragon"));
+    await ensureDir(join(dir, "docs", "api"));
+    await Deno.writeTextFile(
+      join(dir, "docs", "oss", "dragon", "geometry.rb"),
+      GEOMETRY_RB,
+    );
+    await Deno.writeTextFile(
+      join(dir, "CHANGELOG-CURR.txt"),
+      "* 7.13\n** [Bugfix] something\n",
+    );
+    const idx = await EngineIndex.build(ruby, dir);
+    assertEquals(idx.label, "7.13");
+    await Deno.remove(base, { recursive: true });
+  });
+});
+
 describe("EngineIndex cache", () => {
   let denoJson: { version: string };
 

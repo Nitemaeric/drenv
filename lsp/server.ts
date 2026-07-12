@@ -4,7 +4,11 @@ import { basename, fromFileUrl, resolve } from "@std/path";
 
 import { Connection, readMessages, type RpcMessage } from "./src/protocol.ts";
 import { Ruby } from "./src/ruby.ts";
-import { detectProjectDirs, Workspace } from "./src/workspace.ts";
+import {
+  detectProjectDirs,
+  detectWorkspaceEngine,
+  Workspace,
+} from "./src/workspace.ts";
 import { Resolver } from "./src/resolve.ts";
 import { YardRenderer } from "./src/yard.ts";
 import { EngineIndex } from "./src/engine.ts";
@@ -113,7 +117,13 @@ export default async function lsp() {
     }
 
     const ws = new Workspace(ruby);
-    const engine = await EngineIndex.build(ruby);
+    // An engine unpacked in the workspace (docs/oss beside mygame/) wins over
+    // drenv-managed versions: it's the version the project actually runs, and
+    // works even when drenv manages no copy of it.
+    const wsEngine = await detectWorkspaceEngine(root, roots);
+    const engine = wsEngine
+      ? await EngineIndex.build(ruby, { rootDir: wsEngine })
+      : await EngineIndex.build(ruby);
     indexedRoots = new Set([root, ...roots].map((p) => resolve(p)));
     await ws.scan(roots, indexedRoots);
 

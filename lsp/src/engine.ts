@@ -64,6 +64,18 @@ const isDir = async (path: string): Promise<boolean> => {
   }
 };
 
+// A DragonRuby unpack labels its version only in CHANGELOG-CURR.txt, whose
+// first org-mode heading is the version (`* 7.13`). Used to label an
+// in-workspace engine, whose folder name is arbitrary.
+const readEngineVersion = async (dir: string): Promise<string | null> => {
+  try {
+    const text = await Deno.readTextFile(join(dir, "CHANGELOG-CURR.txt"));
+    return text.match(/^\*+\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)/m)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * The engine-derived API index: modules parsed from the installed DragonRuby's
  * own Ruby source, its markdown docs, the derived `args.*` chain tree, and the
@@ -114,7 +126,7 @@ export class EngineIndex {
     let dir: string;
     if (rootDir !== undefined) {
       if (!(await isDir(rootDir))) return index;
-      index.#label = basename(rootDir);
+      index.#label = (await readEngineVersion(rootDir)) ?? basename(rootDir);
       dir = rootDir;
     } else {
       const version = (await installedVersions())[0];

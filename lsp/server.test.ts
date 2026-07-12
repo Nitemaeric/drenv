@@ -260,3 +260,56 @@ Deno.test("$/cancelRequest is a no-op that never wedges the request stream", asy
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+Deno.test("indexes a DragonRuby engine unpacked in the workspace", async () => {
+  // A raw DragonRuby unzip: the engine's docs sit at the workspace root beside
+  // mygame/, and drenv manages no copy of this version. The server must index
+  // the in-workspace engine, not fall back to an empty index.
+  const root = await Deno.makeTempDir({ prefix: "drenv-lsp-wsengine-" });
+  try {
+    await Deno.writeTextFile(join(root, "dragonruby"), ""); // project marker
+    await ensureDir(join(root, "docs", "oss", "dragon"));
+    // A distinctively-named method proves THIS engine was indexed (not any
+    // drenv-managed version that may exist on the test machine).
+    await Deno.writeTextFile(
+      join(root, "docs", "oss", "dragon", "geometry.rb"),
+      "module Geometry\n  def zorp_special(a, b)\n    a.x\n  end\nend\n",
+    );
+    await ensureDir(join(root, "mygame", "app"));
+    const mainPath = join(root, "mygame", "app", "main.rb");
+    const text = "def tick args\n  Geometry.\nend\n";
+    await Deno.writeTextFile(mainPath, text);
+    const uri = toFileUrl(mainPath).href;
+
+    const sess = openSession(root);
+    // deno-lint-ignore no-explicit-any
+    const init: any = await sess.request("initialize", {
+      processId: null,
+      rootUri: toFileUrl(root).href,
+      capabilities: {},
+    });
+    assert(init?.capabilities?.completionProvider);
+    await sess.notify("initialized", {});
+    await sess.notify("textDocument/didOpen", {
+      textDocument: { uri, languageId: "ruby", version: 1, text },
+    });
+    await beat();
+
+    // deno-lint-ignore no-explicit-any
+    const items: any[] = await sess.request("textDocument/completion", {
+      textDocument: { uri },
+      position: { line: 1, character: 11 }, // after `Geometry.`
+    });
+    const labels = (items ?? []).map((i) => i.label);
+    assert(
+      labels.includes("zorp_special"),
+      `in-workspace engine methods should complete (got ${
+        labels.slice(0, 8).join(", ")
+      })`,
+    );
+
+    await sess.close();
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
