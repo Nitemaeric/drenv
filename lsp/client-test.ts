@@ -55,6 +55,17 @@ end
 def kwarg_demo
   Geometry.rect_navigate rec: {}
 end
+
+# Spawns a wave of enemies at the given difficulty.
+#
+# @param args [GTK::Args] the tick args
+# @param difficulty [Integer] wave scaling factor
+# @return [Array] the spawned enemies
+# @note Call at most once per tick.
+# @example
+#   spawn_wave args, 3
+def spawn_wave args, difficulty
+end
 `;
 await Deno.writeTextFile(join(mygame, "app", "main.rb"), MAIN);
 await Deno.writeTextFile(
@@ -311,6 +322,24 @@ check(
   !!missingKw && missingKw.message.includes("`rect:`") &&
     missingKw.message.includes("`rects:`"),
   missingKw?.message?.slice(0, 90) ?? "missing",
+);
+
+// YARD docs: hover on the spawn_wave def renders tags as markdown.
+// deno-lint-ignore no-explicit-any
+const yardHover: any = await request("textDocument/hover", {
+  textDocument: { uri: mainUri },
+  position: { line: 44, character: 6 },
+});
+const yardDoc = yardHover?.contents?.value ?? "";
+check(
+  "yard: hover renders @param/@return/@note/@example as markdown",
+  yardDoc.includes("Spawns a wave") &&
+    yardDoc.includes("**Parameters**") &&
+    yardDoc.includes("`difficulty` (`Integer`)") &&
+    yardDoc.includes("**Returns**") &&
+    yardDoc.includes("> **Note:**") &&
+    yardDoc.includes("```ruby"),
+  `${yardDoc.length} chars`,
 );
 
 const perf = diags.find((d) => d.code === "array-manipulation");

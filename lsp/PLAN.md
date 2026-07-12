@@ -152,6 +152,13 @@ Files: `lsp/server.ts` (server), `lsp/client-test.ts` (scripted protocol client
 - **One-hop assignment tracking**: `enemies = []` → Array. Powers
   variable-receiver completions AND extends shape/arity checks to one-hop
   literal variables. Explicitly stop at one hop.
+- **YARD types as an inference input**: the spike already extracts comment
+  blocks above workspace defs and renders YARD tags (`@param`/`@return`/
+  `@note`/`@example`) as hover/completion markdown. The next tier is using
+  `@param`/`@return` _types_ to power workspace shape/arity checks and
+  method-chain completion (`@anim = Animation.new` → `@anim.` completes the
+  class's methods), built on a workspace object model (qualified class → methods
+  map from the existing def index).
 - Tick-reachability gating for perf rules (workspace call graph from the def
   index), so per-frame hints only fire where they're hot.
 - Additional guide rules (each certainty-gated, Information severity):
