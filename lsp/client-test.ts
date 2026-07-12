@@ -359,76 +359,144 @@ check(
 await request("shutdown", null);
 await notify("exit", null);
 
-// --- dormant mode: a non-DragonRuby workspace gets no capabilities ----------
+// --- secondary sessions (dormant + monorepo detection) ----------------------
 
-const plain = await Deno.makeTempDir({ prefix: "drenv-lsp-plain-" });
-await Deno.writeTextFile(join(plain, "app.rb"), "puts 'rails-ish'\n");
-
-const proc2 = new Deno.Command(cmd, {
-  args,
-  cwd: plain,
-  stdin: "piped",
-  stdout: "piped",
-  stderr: "inherit",
-}).spawn();
-const writer2 = proc2.stdin.getWriter();
-
-const send2 = async (message: unknown) => {
-  const body = encoder.encode(JSON.stringify(message));
-  await writer2.write(encoder.encode(`Content-Length: ${body.length}\r\n\r\n`));
-  await writer2.write(body);
+type Mini = {
+  // deno-lint-ignore no-explicit-any
+  request: (method: string, params: unknown) => Promise<any>;
+  notify: (method: string, params: unknown) => Promise<void>;
+  close: () => Promise<void>;
 };
 
-const initDormant = await new Promise<
+const miniSession = (cwd: string): Mini => {
+  const proc = new Deno.Command(cmd, {
+    args,
+    cwd,
+    stdin: "piped",
+    stdout: "piped",
+    stderr: "inherit",
+  }).spawn();
+  const w = proc.stdin.getWriter();
+  let id = 1000;
+  let buf = new Uint8Array(0);
   // deno-lint-ignore no-explicit-any
-  any
->((resolve, reject) => {
-  const timer = setTimeout(
-    () => reject(new Error("timeout waiting for dormant initialize")),
-    15000,
-  );
+  const waiting = new Map<number, (r: any) => void>();
+
   (async () => {
-    let buf = new Uint8Array(0);
-    for await (const chunk of proc2.stdout) {
+    for await (const chunk of proc.stdout) {
       const merged = new Uint8Array(buf.length + chunk.length);
       merged.set(buf);
       merged.set(chunk, buf.length);
       buf = merged;
-      const text = decoder.decode(buf);
-      const headerEnd = text.indexOf("\r\n\r\n");
-      if (headerEnd === -1) continue;
-      const length = Number(text.match(/Content-Length: (\d+)/i)?.[1] ?? 0);
-      const bodyStart = encoder.encode(text.slice(0, headerEnd + 4)).length;
-      if (buf.length < bodyStart + length) continue;
-      clearTimeout(timer);
-      resolve(
-        JSON.parse(decoder.decode(buf.slice(bodyStart, bodyStart + length))),
-      );
-      return;
+      while (true) {
+        const text = decoder.decode(buf);
+        const headerEnd = text.indexOf("\r\n\r\n");
+        if (headerEnd === -1) break;
+        const length = Number(text.match(/Content-Length: (\d+)/i)?.[1] ?? 0);
+        const bodyStart = encoder.encode(text.slice(0, headerEnd + 4)).length;
+        if (buf.length < bodyStart + length) break;
+        const body = JSON.parse(
+          decoder.decode(buf.slice(bodyStart, bodyStart + length)),
+        );
+        buf = buf.slice(bodyStart + length);
+        if (body.id !== undefined && waiting.has(body.id)) {
+          waiting.get(body.id)!(body.result);
+          waiting.delete(body.id);
+        }
+      }
     }
   })();
-  send2({
-    jsonrpc: "2.0",
-    id: 999,
-    method: "initialize",
-    params: {
-      processId: null,
-      rootUri: toFileUrl(plain).href,
-      capabilities: {},
-    },
-  });
-});
 
+  const sendMini = async (message: unknown) => {
+    const body = encoder.encode(JSON.stringify(message));
+    await w.write(encoder.encode(`Content-Length: ${body.length}\r\n\r\n`));
+    await w.write(body);
+  };
+
+  return {
+    request: (method, params) => {
+      const rid = id++;
+      // deno-lint-ignore no-explicit-any
+      const promise = new Promise<any>((resolve, reject) => {
+        waiting.set(rid, resolve);
+        setTimeout(() => reject(new Error(`timeout: ${method}`)), 15000);
+      });
+      sendMini({ jsonrpc: "2.0", id: rid, method, params });
+      return promise;
+    },
+    notify: (method, params) => sendMini({ jsonrpc: "2.0", method, params }),
+    close: async () => {
+      await sendMini({ jsonrpc: "2.0", method: "exit", params: null });
+      proc.kill();
+    },
+  };
+};
+
+// Dormant: a non-DragonRuby workspace gets no capabilities.
+const plain = await Deno.makeTempDir({ prefix: "drenv-lsp-plain-" });
+await Deno.writeTextFile(join(plain, "app.rb"), "puts 'rails-ish'\n");
+const dormantSession = miniSession(plain);
+const initDormant = await dormantSession.request("initialize", {
+  processId: null,
+  rootUri: toFileUrl(plain).href,
+  capabilities: {},
+});
 check(
   "dormant: non-DragonRuby workspace advertises no capabilities",
-  initDormant?.result?.serverInfo?.version?.includes("dormant") &&
-    !initDormant?.result?.capabilities?.completionProvider,
-  initDormant?.result?.serverInfo?.version ?? "no response",
+  initDormant?.serverInfo?.version?.includes("dormant") &&
+    !initDormant?.capabilities?.completionProvider,
+  initDormant?.serverInfo?.version ?? "no response",
+);
+await dormantSession.close();
+await Deno.remove(plain, { recursive: true }).catch(() => {});
+
+// Monorepo: markers one level below the workspace root (conjuration/demo
+// shape) must still activate, and the nested mygame must be indexed.
+const mono = await Deno.makeTempDir({ prefix: "drenv-lsp-mono-" });
+await ensureDir(join(mono, "lib"));
+await Deno.writeTextFile(join(mono, "drenv.toml"), '[package]\nroot = "lib"\n');
+await ensureDir(join(mono, "demo", "mygame", "app"));
+await Deno.writeTextFile(join(mono, "demo", "dragonruby"), "");
+await Deno.writeTextFile(
+  join(mono, "demo", "mygame", "app", "helpers.rb"),
+  "def nested_helper args\nend\n",
+);
+const monoMain = join(mono, "demo", "mygame", "app", "main.rb");
+const MONO_MAIN = "def tick args\n  nested_helper args\nend\n";
+await Deno.writeTextFile(monoMain, MONO_MAIN);
+
+const monoSession = miniSession(mono);
+const initMono = await monoSession.request("initialize", {
+  processId: null,
+  rootUri: toFileUrl(mono).href,
+  capabilities: {},
+});
+check(
+  "monorepo: markers one level down still activate the server",
+  !!initMono?.capabilities?.completionProvider,
+  initMono?.serverInfo?.version ?? "no response",
 );
 
-await send2({ jsonrpc: "2.0", method: "exit", params: null });
-proc2.kill();
-await Deno.remove(plain, { recursive: true }).catch(() => {});
+await monoSession.notify("textDocument/didOpen", {
+  textDocument: {
+    uri: toFileUrl(monoMain).href,
+    languageId: "ruby",
+    version: 1,
+    text: MONO_MAIN,
+  },
+});
+const monoDef = await monoSession.request("textDocument/definition", {
+  textDocument: { uri: toFileUrl(monoMain).href },
+  position: { line: 1, character: 4 },
+});
+check(
+  "monorepo: nested mygame is indexed (cross-file definition)",
+  Array.isArray(monoDef) && monoDef.length === 1 &&
+    monoDef[0].uri.endsWith("helpers.rb"),
+  monoDef?.[0]?.uri?.split("/").slice(-2).join("/") ?? "no result",
+);
+await monoSession.close();
+await Deno.remove(mono, { recursive: true }).catch(() => {});
 await pump.catch(() => {});
 await Deno.remove(tmp, { recursive: true }).catch(() => {});
 
