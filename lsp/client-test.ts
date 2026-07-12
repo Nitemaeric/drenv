@@ -76,6 +76,9 @@ module Fx
   #
   # @param intensity [Float] how hard to shake
   class Shaker
+    # Current shake strength in pixels.
+    attr_reader :strength
+
     # Builds a shaker.
     #
     # @param intensity [Float] initial strength
@@ -90,6 +93,23 @@ module Fx
     # Builds a fader.
     def initialize
     end
+  end
+end
+
+class SceneBase
+  # Draws the shared heads-up display.
+  def hud
+  end
+end
+
+class ZoomScene < SceneBase
+  def tick
+    hud # call resolved via superclass chain
+  end
+end
+
+class OtherScene
+  def hud
   end
 end
 `;
@@ -452,6 +472,74 @@ check(
   Array.isArray(localDef) && localDef.length === 1 &&
     localDef[0].range.start.line === lineOf("def initialize intensity"),
   `${localDef?.length ?? 0} result(s)`,
+);
+check(
+  "hover: parameter carries its @param type and description",
+  localDoc.includes("(`Float`) initial strength"),
+);
+
+// attr_reader defines a documented method.
+const attrLine = lineOf("attr_reader :strength");
+// deno-lint-ignore no-explicit-any
+const attrHover: any = await request("textDocument/hover", {
+  textDocument: { uri: mainUri },
+  position: {
+    line: attrLine,
+    character: MAIN.split("\n")[attrLine].indexOf(":strength") + 3,
+  },
+});
+const attrDoc = attrHover?.contents?.value ?? "";
+check(
+  "hover: attr_reader symbol is a documented method def",
+  attrDoc.includes("Fx::Shaker#strength") &&
+    attrDoc.includes("Current shake strength"),
+  attrDoc.slice(0, 50),
+);
+
+// Instance variables resolve by enclosing class, docs via same-named attr.
+// deno-lint-ignore no-explicit-any
+const ivarHover: any = await request("textDocument/hover", {
+  textDocument: { uri: mainUri },
+  position: {
+    line: strengthLine,
+    character: MAIN.split("\n")[strengthLine].indexOf("@strength") + 3,
+  },
+});
+const ivarDoc = ivarHover?.contents?.value ?? "";
+check(
+  "hover: instance variable shows its class and inherits the attr doc",
+  ivarDoc.includes("**@strength** — instance variable of `Fx::Shaker`") &&
+    ivarDoc.includes("Current shake strength"),
+  ivarDoc.slice(0, 60),
+);
+
+// Bare call resolution: hud inside ZoomScene#tick must resolve through the
+// superclass chain to SceneBase#hud, not list OtherScene#hud too.
+const hudCallLine = lineOf("hud # call");
+const hudChar = MAIN.split("\n")[hudCallLine].indexOf("hud") + 1;
+// deno-lint-ignore no-explicit-any
+const hudHover: any = await request("textDocument/hover", {
+  textDocument: { uri: mainUri },
+  position: { line: hudCallLine, character: hudChar },
+});
+const hudDoc = hudHover?.contents?.value ?? "";
+check(
+  "hover: bare call resolves via enclosing class + superclass chain",
+  hudDoc.includes("**SceneBase#hud**") &&
+    hudDoc.includes("Draws the shared") &&
+    !hudDoc.includes("definitions"),
+  hudDoc.slice(0, 40),
+);
+// deno-lint-ignore no-explicit-any
+const hudDef: any = await request("textDocument/definition", {
+  textDocument: { uri: mainUri },
+  position: { line: hudCallLine, character: hudChar },
+});
+check(
+  "definition: bare call narrowed to the inherited def",
+  Array.isArray(hudDef) && hudDef.length === 1 &&
+    hudDef[0].range.start.line === lineOf("  def hud"),
+  `${hudDef?.length ?? 0} result(s)`,
 );
 
 const perf = diags.find((d) => d.code === "array-manipulation");

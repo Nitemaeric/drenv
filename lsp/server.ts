@@ -339,6 +339,7 @@ type Location = {
   container?: string; // enclosing namespace, e.g. "Conjuration::Animation"
   kind?: "method" | "class" | "module";
   doc?: string; // raw comment block; rendered lazily
+  superclass?: string; // as written at the class site, e.g. "Scene"
 };
 type Pos = { line: number; character: number };
 
@@ -371,15 +372,20 @@ const namespaceIndex = (): Map<string, Location> => {
 
 /** Resolves a constant path the way Ruby/YARD would: relative to the doc's
  * namespace first, walking outward, then top-level. */
-const resolveConst = (path: string, container: string): Location | null => {
+const resolveConstName = (path: string, container: string): string | null => {
   const ns = namespaceIndex();
   const parts = container ? container.split("::") : [];
   for (let i = parts.length; i >= 0; i--) {
     const prefix = parts.slice(0, i).join("::");
-    const hit = ns.get(prefix ? `${prefix}::${path}` : path);
-    if (hit) return hit;
+    const key = prefix ? `${prefix}::${path}` : path;
+    if (ns.has(key)) return key;
   }
   return null;
+};
+
+const resolveConst = (path: string, container: string): Location | null => {
+  const key = resolveConstName(path, container);
+  return key ? namespaceIndex().get(key) ?? null : null;
 };
 
 const constLink = (path: string, hit: Location): string =>
@@ -413,7 +419,7 @@ const renderCache = new Map<string, string>();
 /** Renders a raw comment block (plain or YARD-tagged) as markdown. Constant
  * references resolve relative to `container`, the doc's enclosing namespace. */
 const renderDoc = (raw: string, container = ""): string => {
-  const cacheKey = `${container} ${raw}`;
+  const cacheKey = `${container}\u0000${raw}`;
   const cached = renderCache.get(cacheKey);
   if (cached) return cached;
 
@@ -555,36 +561,69 @@ const indexFile = (uri: string, text: string) => {
     else defs.delete(name);
   }
 
+  // Comments aren't reliably tree siblings of the def they document (a
+  // class's doc block can attach to the enclosing module node), so walk
+  // raw lines upward instead.
+  const docAbove = (row: number): string | undefined => {
+    const docLines: string[] = [];
+    for (let r = row - 1; r >= 0; r--) {
+      const trimmed = lines[r].trim();
+      if (!trimmed.startsWith("#")) break;
+      docLines.unshift(trimmed.replace(/^#[ ]?/, ""));
+    }
+    return docLines.length > 0 ? docLines.join("\n") : undefined;
+  };
+
+  const addDef = (name: string, loc: Location) => {
+    const list = defs.get(name) ?? [];
+    list.push(loc);
+    defs.set(name, list);
+  };
+
+  const ATTRS = new Set(["attr_reader", "attr_writer", "attr_accessor"]);
+
   const visit = (node: Node, container: string) => {
     let inner = container;
     if (["method", "class", "module"].includes(node.type)) {
       const name = node.childForFieldName("name");
       if (name) {
-        // Comments aren't reliably tree siblings of the def they document (a
-        // class's doc block can attach to the enclosing module node), so walk
-        // raw lines upward instead.
-        const docLines: string[] = [];
-        for (let row = node.startPosition.row - 1; row >= 0; row--) {
-          const trimmed = lines[row].trim();
-          if (!trimmed.startsWith("#")) break;
-          docLines.unshift(trimmed.replace(/^#[ ]?/, ""));
-        }
-
-        const list = defs.get(name.text) ?? [];
-        list.push({
+        addDef(name.text, {
           uri,
           range: nodeRange(name),
           kind: node.type as Location["kind"],
           container: container || undefined,
-          doc: docLines.length > 0 ? docLines.join("\n") : undefined,
+          doc: docAbove(node.startPosition.row),
+          superclass: node.type === "class"
+            ? node.childForFieldName("superclass")?.namedChild(0)?.text
+            : undefined,
         });
-        defs.set(name.text, list);
 
         if (node.type !== "method") {
           inner = container ? `${container}::${name.text}` : name.text;
         }
       }
     }
+
+    // attr_reader :x, :y and friends define methods too.
+    if (
+      node.type === "call" && !node.childForFieldName("receiver") &&
+      ATTRS.has(node.childForFieldName("method")?.text ?? "")
+    ) {
+      const doc = docAbove(node.startPosition.row);
+      const argsNode = node.childForFieldName("arguments");
+      for (let i = 0; i < (argsNode?.namedChildCount ?? 0); i++) {
+        const arg = argsNode!.namedChild(i)!;
+        if (arg.type !== "simple_symbol") continue;
+        addDef(arg.text.slice(1), {
+          uri,
+          range: nodeRange(arg),
+          kind: "method",
+          container: container || undefined,
+          doc,
+        });
+      }
+    }
+
     for (let i = 0; i < node.namedChildCount; i++) {
       visit(node.namedChild(i)!, inner);
     }
@@ -1133,7 +1172,12 @@ const enclosingNamespace = (n: Node): string => {
   return parts.join("::");
 };
 
-type LocalHit = { role: string; node: Node; methodLabel: string };
+type LocalHit = {
+  role: string;
+  node: Node;
+  method: Node;
+  methodLabel: string;
+};
 
 /** When the identifier at `pos` is a parameter, block parameter, or local
  * variable of its enclosing method, workspace-wide name matches are noise —
@@ -1173,7 +1217,7 @@ const resolveLocal = (uri: string, pos: Pos, word: string): LocalHit | null => {
     for (let i = 0; i < params.namedChildCount; i++) {
       const name = nameOf(params.namedChild(i)!);
       if (name?.text === word) {
-        return { role: "parameter", node: name, methodLabel };
+        return { role: "parameter", node: name, method, methodLabel };
       }
     }
   }
@@ -1185,7 +1229,12 @@ const resolveLocal = (uri: string, pos: Pos, word: string): LocalHit | null => {
       for (let i = 0; i < n.namedChildCount; i++) {
         const name = nameOf(n.namedChild(i)!);
         if (name?.text === word) {
-          hit = { role: "block parameter", node: name, methodLabel };
+          hit = {
+            role: "block parameter",
+            node: name,
+            method: method!,
+            methodLabel,
+          };
           return;
         }
       }
@@ -1193,7 +1242,12 @@ const resolveLocal = (uri: string, pos: Pos, word: string): LocalHit | null => {
     if (n.type === "assignment") {
       const left = n.childForFieldName("left");
       if (left?.type === "identifier" && left.text === word) {
-        hit = { role: "local variable", node: left, methodLabel };
+        hit = {
+          role: "local variable",
+          node: left,
+          method: method!,
+          methodLabel,
+        };
         return;
       }
     }
@@ -1212,7 +1266,66 @@ const wordAt = (uri: string, pos: Pos): string | null => {
   return word || null;
 };
 
+/** Ranks a bare call's candidate definitions by the call site's enclosing
+ * class, its superclass chain, then same-file — Ruby's own lookup order,
+ * approximately. */
+const contextCandidates = (
+  uri: string,
+  pos: Pos,
+  found: Location[],
+): Location[] | null => {
+  const tree = fileTree.get(uri);
+  const node = tree?.rootNode.descendantForPosition({
+    row: pos.line,
+    column: pos.character,
+  });
+  if (!node) return null;
+
+  let ns = enclosingNamespace(node);
+  const seen = new Set<string>();
+  while (ns && !seen.has(ns)) {
+    seen.add(ns);
+    const hits = found.filter((f) => f.container === ns);
+    if (hits.length > 0) return hits;
+    const cls = namespaceIndex().get(ns);
+    ns = cls?.superclass
+      ? resolveConstName(
+        cls.superclass,
+        ns.split("::").slice(0, -1).join("::"),
+      ) ?? ""
+      : "";
+  }
+
+  const inFile = found.filter((f) => f.uri === uri);
+  return inFile.length > 0 ? inFile : null;
+};
+
 const hover = (uri: string, pos: Pos): unknown => {
+  const md = (value: string) => ({ contents: { kind: "markdown", value } });
+
+  // Instance/class variables resolve by enclosing class, not by name.
+  const nodeAt = fileTree.get(uri)?.rootNode.descendantForPosition({
+    row: pos.line,
+    column: pos.character,
+  });
+  if (
+    nodeAt &&
+    (nodeAt.type === "instance_variable" || nodeAt.type === "class_variable")
+  ) {
+    const ns = enclosingNamespace(nodeAt);
+    const kindLabel = nodeAt.type === "instance_variable"
+      ? "instance variable"
+      : "class variable";
+    // A documented same-named attr_* in the same class is this variable's doc.
+    const attr = (defs.get(nodeAt.text.replace(/^@+/, "")) ?? []).find((f) =>
+      f.container === ns && f.kind === "method" && f.doc
+    );
+    return md(
+      `**${nodeAt.text}** — ${kindLabel}${ns ? ` of \`${ns}\`` : ""}` +
+        (attr?.doc ? `\n\n---\n\n${renderDoc(attr.doc, ns)}` : ""),
+    );
+  }
+
   const word = wordAt(uri, pos);
   if (!word) return null;
 
@@ -1231,12 +1344,43 @@ const hover = (uri: string, pos: Pos): unknown => {
     }
   }
 
-  const md = (value: string) => ({ contents: { kind: "markdown", value } });
-
   // Parameter or local variable of the enclosing method?
   const local = resolveLocal(uri, pos, word);
   if (local) {
-    return md(`**${word}** — ${local.role} of \`${local.methodLabel}\``);
+    // A parameter's doc is its @param entry in the method's comment block.
+    let paramDoc = "";
+    if (local.role === "parameter") {
+      const lines = (fileText.get(uri) ?? "").split("\n");
+      const raw: string[] = [];
+      for (let r = local.method.startPosition.row - 1; r >= 0; r--) {
+        const trimmed = lines[r].trim();
+        if (!trimmed.startsWith("#")) break;
+        raw.unshift(trimmed.replace(/^#[ ]?/, ""));
+      }
+      const rx = new RegExp(
+        `^@param ${word}\\b\\s*(?:\\[([^\\]]*)\\])?\\s*(.*)$`,
+      );
+      for (let i = 0; i < raw.length; i++) {
+        const m = raw[i].match(rx);
+        if (!m) continue;
+        const parts = [m[2] ?? ""];
+        for (
+          let j = i + 1;
+          j < raw.length && raw[j].startsWith(" ") && !raw[j].startsWith("@");
+          j++
+        ) {
+          parts.push(raw[j].trim());
+        }
+        const ns = enclosingNamespace(local.method);
+        paramDoc = `\n\n---\n\n${m[1] ? `(${renderType(m[1], ns)}) ` : ""}${
+          inlineMd(parts.join(" ").trim())
+        }`;
+        break;
+      }
+    }
+    return md(
+      `**${word}** — ${local.role} of \`${local.methodLabel}\`${paramDoc}`,
+    );
   }
 
   // Workspace definition?
@@ -1261,14 +1405,21 @@ const hover = (uri: string, pos: Pos): unknown => {
       );
     }
 
+    // A bare call inside a class resolves like Ruby would: own class first,
+    // then up the superclass chain, then same-file.
+    let candidates = found;
+    if (new Set(found.map(qualified)).size > 1) {
+      candidates = contextCandidates(uri, pos, found) ?? found;
+    }
+
     // One qualified name (possibly reopened across files): collapse.
-    const names = [...new Set(found.map(qualified))];
+    const names = [...new Set(candidates.map(qualified))];
     if (names.length === 1) {
-      const files = [...new Set(found.map((f) => rel(f.uri)))];
+      const files = [...new Set(candidates.map((f) => rel(f.uri)))];
       const where = files.slice(0, 3).join(", ") +
         (files.length > 3 ? ` (+${files.length - 3} more)` : "");
-      const documented = found.find((f) => f.doc);
-      const docs = [...new Set(found.map((f) => f.doc).filter(Boolean))];
+      const documented = candidates.find((f) => f.doc);
+      const docs = [...new Set(candidates.map((f) => f.doc).filter(Boolean))];
       return md(
         `**${names[0]}** — defined in ${where}` +
           (docs.length === 1
@@ -1278,12 +1429,14 @@ const hover = (uri: string, pos: Pos): unknown => {
     }
 
     // Ambiguous call site: list candidates instead of guessing a doc.
-    const listed = found.slice(0, 5).map((f) =>
+    const listed = candidates.slice(0, 5).map((f) =>
       `- \`${qualified(f)}\` — ${rel(f.uri)}`
     );
-    const more = found.length > 5 ? `\n- …and ${found.length - 5} more` : "";
+    const more = candidates.length > 5
+      ? `\n- …and ${candidates.length - 5} more`
+      : "";
     return md(
-      `**${word}** — ${found.length} definitions\n\n${
+      `**${word}** — ${candidates.length} definitions\n\n${
         listed.join("\n")
       }${more}`,
     );
@@ -1296,7 +1449,11 @@ const definition = (uri: string, pos: Pos): unknown[] => {
   if (!word) return [];
   const local = resolveLocal(uri, pos, word);
   if (local) return [{ uri, range: nodeRange(local.node) }];
-  return (defs.get(word) ?? []).map(({ uri, range }) => ({ uri, range }));
+  const found = defs.get(word) ?? [];
+  const narrowed = found.length > 1
+    ? contextCandidates(uri, pos, found) ?? found
+    : found;
+  return narrowed.map(({ uri, range }) => ({ uri, range }));
 };
 
 const references = (uri: string, pos: Pos): Location[] => {
