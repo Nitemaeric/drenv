@@ -74,7 +74,10 @@ Both feasibility risks retired, everything verified by a scripted LSP client
    gets an empty-capabilities response and an idle server. The extension can
    therefore be enabled for Ruby globally: non-DragonRuby projects are
    untouched, DragonRuby projects light up with zero per-project config. Every
-   detected project dir is workspace-indexed (nested `mygame/` included).
+   detected project dir is workspace-indexed (nested `mygame/` included), and
+   vendored packages whose `path:` source resolves to an indexed project root
+   are **deduped** — definitions point at the one true (editable) source, not
+   the vendored build artifact.
 
 ## Design principles (hold these)
 

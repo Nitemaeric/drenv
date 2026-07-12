@@ -461,8 +461,28 @@ await Deno.writeTextFile(
   join(mono, "demo", "mygame", "app", "helpers.rb"),
   "def nested_helper args\nend\n",
 );
+
+// Library source + its vendored twin (a path dep back into this workspace):
+// definitions must point at the source only.
+await Deno.writeTextFile(
+  join(mono, "lib", "thing.rb"),
+  "def source_thing args\nend\n",
+);
+await ensureDir(join(mono, "demo", "mygame", "vendor", "thing"));
+await Deno.writeTextFile(
+  join(mono, "demo", "mygame", "vendor", "thing", "thing.rb"),
+  "def source_thing args\nend\n",
+);
+await Deno.writeTextFile(
+  join(mono, "demo", "mygame", "drenv.lock"),
+  'lockfile_version = 1\nmanifest_digest = "x"\n\n' +
+    '[[dependencies]]\nname = "thing"\nsource = "path:../.."\n' +
+    'require = ["vendor/thing/thing.rb"]\n',
+);
+
 const monoMain = join(mono, "demo", "mygame", "app", "main.rb");
-const MONO_MAIN = "def tick args\n  nested_helper args\nend\n";
+const MONO_MAIN =
+  "def tick args\n  nested_helper args\n  source_thing args\nend\n";
 await Deno.writeTextFile(monoMain, MONO_MAIN);
 
 const monoSession = miniSession(mono);
@@ -494,6 +514,22 @@ check(
   Array.isArray(monoDef) && monoDef.length === 1 &&
     monoDef[0].uri.endsWith("helpers.rb"),
   monoDef?.[0]?.uri?.split("/").slice(-2).join("/") ?? "no result",
+);
+
+// source_thing exists in lib/ AND vendor/ — the vendored twin must be
+// deduped, leaving exactly the source definition.
+const twinDef = await monoSession.request("textDocument/definition", {
+  textDocument: { uri: toFileUrl(monoMain).href },
+  position: { line: 2, character: 4 },
+});
+check(
+  "monorepo: vendored twin deduped — definition points at lib/ source only",
+  Array.isArray(twinDef) && twinDef.length === 1 &&
+    twinDef[0].uri.includes("/lib/thing.rb"),
+  `${twinDef?.length ?? 0} result(s): ` +
+    (twinDef ?? []).map((d: { uri: string }) =>
+      d.uri.split("/").slice(-3).join("/")
+    ).join(" | "),
 );
 await monoSession.close();
 await Deno.remove(mono, { recursive: true }).catch(() => {});
