@@ -29,8 +29,11 @@ const decoder = new TextDecoder();
 
 const send = async (message: unknown) => {
   const body = encoder.encode(JSON.stringify(message));
-  await writer.write(encoder.encode(`Content-Length: ${body.length}\r\n\r\n`));
-  await writer.write(body);
+  const header = encoder.encode(`Content-Length: ${body.length}\r\n\r\n`);
+  const frame = new Uint8Array(header.length + body.length);
+  frame.set(header);
+  frame.set(body, header.length);
+  await writer.write(frame);
 };
 
 const timeout = setTimeout(() => {

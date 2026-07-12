@@ -30,10 +30,16 @@ const openSession = (cwd: string): Session => {
   // deno-lint-ignore no-explicit-any
   const waiting = new Map<number, (r: any) => void>();
 
+  // One write per frame: the pump replies to server->client requests without
+  // awaiting, and split header/body writes from concurrent sends interleave on
+  // the pipe, corrupting frames (the Windows CI flake).
   const send = async (message: unknown) => {
     const body = encoder.encode(JSON.stringify(message));
-    await w.write(encoder.encode(`Content-Length: ${body.length}\r\n\r\n`));
-    await w.write(body);
+    const header = encoder.encode(`Content-Length: ${body.length}\r\n\r\n`);
+    const frame = new Uint8Array(header.length + body.length);
+    frame.set(header);
+    frame.set(body, header.length);
+    await w.write(frame);
   };
 
   const pump = (async () => {

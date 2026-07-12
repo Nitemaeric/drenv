@@ -173,8 +173,11 @@ const pump = (async () => {
 
 const send = async (message: unknown) => {
   const body = encoder.encode(JSON.stringify(message));
-  await writer.write(encoder.encode(`Content-Length: ${body.length}\r\n\r\n`));
-  await writer.write(body);
+  const header = encoder.encode(`Content-Length: ${body.length}\r\n\r\n`);
+  const frame = new Uint8Array(header.length + body.length);
+  frame.set(header);
+  frame.set(body, header.length);
+  await writer.write(frame);
 };
 
 const request = (method: string, params: unknown): Promise<unknown> => {
@@ -638,8 +641,11 @@ const miniSession = (cwd: string, extraArgs: string[] = []): Mini => {
 
   const sendMini = async (message: unknown) => {
     const body = encoder.encode(JSON.stringify(message));
-    await w.write(encoder.encode(`Content-Length: ${body.length}\r\n\r\n`));
-    await w.write(body);
+    const header = encoder.encode(`Content-Length: ${body.length}\r\n\r\n`);
+    const frame = new Uint8Array(header.length + body.length);
+    frame.set(header);
+    frame.set(body, header.length);
+    await w.write(frame);
   };
 
   return {
@@ -812,8 +818,11 @@ const liveSession = (cwd: string): LiveSession => {
 
   const sendLive = async (message: unknown) => {
     const body = encoder.encode(JSON.stringify(message));
-    await w.write(encoder.encode(`Content-Length: ${body.length}\r\n\r\n`));
-    await w.write(body);
+    const header = encoder.encode(`Content-Length: ${body.length}\r\n\r\n`);
+    const frame = new Uint8Array(header.length + body.length);
+    frame.set(header);
+    frame.set(body, header.length);
+    await w.write(frame);
   };
 
   (async () => {
