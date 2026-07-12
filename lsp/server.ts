@@ -996,16 +996,48 @@ const publishDiagnostics = (uri: string) =>
 // interfering with non-DragonRuby projects.
 let dormant = false;
 
-const isDragonRubyProject = async (root: string): Promise<boolean> => {
+const hasProjectMarker = async (dir: string): Promise<boolean> => {
   for (const marker of ["dragonruby", "dragonruby.exe", "mygame"]) {
     try {
-      await Deno.stat(join(root, marker));
+      await Deno.stat(join(dir, marker));
       return true;
     } catch {
       // keep looking
     }
   }
   return false;
+};
+
+/**
+ * DragonRuby project directories within the workspace: the root itself, or
+ * any direct child (monorepos keep the game one level down, e.g.
+ * conjuration/demo). A drenv library repo (root drenv.toml) counts too — its
+ * lib/ deserves indexing and engine intelligence without a game directory.
+ */
+const projectDirs = async (root: string): Promise<string[]> => {
+  const dirs: string[] = [];
+  if (await hasProjectMarker(root)) dirs.push(root);
+
+  try {
+    for await (const entry of Deno.readDir(root)) {
+      if (!entry.isDirectory || entry.name.startsWith(".")) continue;
+      const child = join(root, entry.name);
+      if (await hasProjectMarker(child)) dirs.push(child);
+    }
+  } catch {
+    // unreadable root
+  }
+
+  if (!dirs.includes(root)) {
+    try {
+      await Deno.stat(join(root, "drenv.toml"));
+      dirs.push(root);
+    } catch {
+      // not a library repo either
+    }
+  }
+
+  return dirs;
 };
 
 // deno-lint-ignore no-explicit-any
@@ -1032,7 +1064,8 @@ const handle = async (msg: any) => {
         ? fromFileUrl(params.rootUri)
         : params.rootPath ?? Deno.cwd();
 
-      if (!await isDragonRubyProject(root)) {
+      const roots = await projectDirs(root);
+      if (roots.length === 0) {
         dormant = true;
         await respond(id, {
           capabilities: {},
@@ -1042,7 +1075,9 @@ const handle = async (msg: any) => {
       }
 
       await buildApiIndex();
-      await scanWorkspace(root);
+      for (const dir of roots) {
+        await scanWorkspace(dir);
+      }
       await respond(id, {
         capabilities: {
           textDocumentSync: 1, // full
