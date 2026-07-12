@@ -2,6 +2,7 @@ import { Head } from "$fresh/runtime.ts";
 import Nav from "../../components/Nav.tsx";
 import Footer from "../../components/Footer.tsx";
 import Terminal from "../../components/Terminal.tsx";
+import denoConfig from "../../../deno.json" with { type: "json" };
 
 const QUICK_START: [string, string?][] = [
   ["drenv install", "     # download DragonRuby (asks which tier you own)"],
@@ -148,7 +149,15 @@ export default function Docs() {
 
           {/* Install */}
           <section class="mb-14">
-            <h2 class="mb-4 text-2xl font-semibold tracking-tight">Install</h2>
+            <div class="mb-4 flex items-baseline gap-3">
+              <h2 class="text-2xl font-semibold tracking-tight">Install</h2>
+              <a
+                href="https://github.com/Nitemaeric/drenv/releases/latest"
+                class="rounded-full bg-white/5 px-2.5 py-0.5 text-xs tabular-nums text-white/60 transition-colors hover:text-white/90"
+              >
+                Latest v{denoConfig.version}
+              </a>
+            </div>
             <p class="mb-3 text-white/70">
               The install script downloads the right binary for your platform,
               drops it in{" "}

@@ -2,6 +2,7 @@ import Nav from "../components/Nav.tsx";
 import Footer from "../components/Footer.tsx";
 import Terminal from "../components/Terminal.tsx";
 import InstallCommand from "../islands/InstallCommand.tsx";
+import denoConfig from "../../deno.json" with { type: "json" };
 
 const QUICK_START: [string, string?][] = [
   ["drenv install", "     # download DragonRuby (asks which tier you own)"],
@@ -60,7 +61,7 @@ export default function Home() {
               and vendor your game's dependencies — one small, fast CLI.
             </p>
 
-            <InstallCommand />
+            <InstallCommand version={denoConfig.version} />
           </div>
         </div>
 

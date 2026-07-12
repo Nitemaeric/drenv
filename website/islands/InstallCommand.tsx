@@ -6,7 +6,7 @@ import { useEffect } from "preact/hooks";
  * in an island (not a route) so its effects and click handler actually run in
  * the browser.
  */
-export default function InstallCommand() {
+export default function InstallCommand({ version }: { version?: string }) {
   const copied = useSignal(false);
   const command = useSignal("curl -fsSL drenv.org/install.sh | bash");
   const osLabel = useSignal("");
@@ -36,11 +36,17 @@ export default function InstallCommand() {
 
   return (
     <div class="mx-auto mt-6 max-w-xl">
-      {osLabel.value && (
-        <div class="mb-1.5 pl-1 text-xs tracking-[1px] text-white/50">
-          {osLabel.value}
-        </div>
-      )}
+      <div class="mb-1.5 flex items-center justify-between pl-1 text-xs tracking-[1px] text-white/50">
+        <span>{osLabel.value}</span>
+        {version && (
+          <a
+            href="https://github.com/Nitemaeric/drenv/releases/latest"
+            class="tabular-nums transition-colors hover:text-white/80"
+          >
+            Latest v{version}
+          </a>
+        )}
+      </div>
       <div class="group relative rounded-xl border border-white/10 bg-zinc-900 p-1 shadow-2xl">
         <div class="flex items-center justify-between rounded-[10px] bg-black/60 px-5 py-4 font-mono text-sm">
           <code class="select-all pr-4 text-rose-400">{command.value}</code>
