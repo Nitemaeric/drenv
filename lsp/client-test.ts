@@ -66,6 +66,14 @@ end
 #   spawn_wave args, 3
 def spawn_wave args, difficulty
 end
+
+module Fx
+  # Coordinates screen shake.
+  #
+  # @param intensity [Float] how hard to shake
+  class Shaker
+  end
+end
 `;
 await Deno.writeTextFile(join(mygame, "app", "main.rb"), MAIN);
 await Deno.writeTextFile(
@@ -340,6 +348,24 @@ check(
     yardDoc.includes("> **Note:**") &&
     yardDoc.includes("```ruby"),
   `${yardDoc.length} chars`,
+);
+
+// YARD docs on a class whose comment block tree-attaches to the enclosing
+// module node rather than as siblings of the class (the animation.rb shape).
+const shakerLine = MAIN.split("\n").findIndex((l) =>
+  l.includes("class Shaker")
+);
+// deno-lint-ignore no-explicit-any
+const classHover: any = await request("textDocument/hover", {
+  textDocument: { uri: mainUri },
+  position: { line: shakerLine, character: 10 },
+});
+const classDoc = classHover?.contents?.value ?? "";
+check(
+  "yard: class doc block inside a module renders on hover",
+  classDoc.includes("Coordinates screen shake") &&
+    classDoc.includes("`intensity` (`Float`)"),
+  `${classDoc.length} chars`,
 );
 
 const perf = diags.find((d) => d.code === "array-manipulation");
