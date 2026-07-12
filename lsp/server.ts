@@ -56,13 +56,15 @@ const applyTextChanges = (text: string, changes: any[]): string => {
 // separate process reads, and heavy fd pressure makes an open transiently fail;
 // a genuine deletion arrives as its own Deleted event, so a Created/Changed read
 // is worth a few short retries before we treat the file as gone.
+// Freshly created files can be transiently locked (Windows antivirus scans
+// hold them for hundreds of ms) — back off up to ~1.5s before giving up.
 const readWatchedFile = async (path: string): Promise<string> => {
   for (let attempt = 0;; attempt++) {
     try {
       return await Deno.readTextFile(path);
     } catch (error) {
-      if (attempt >= 4) throw error;
-      await new Promise((r) => setTimeout(r, 10 * (attempt + 1)));
+      if (attempt >= 6) throw error;
+      await new Promise((r) => setTimeout(r, 25 * 2 ** attempt));
     }
   }
 };
