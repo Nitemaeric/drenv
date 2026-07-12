@@ -343,6 +343,91 @@ const defs = new Map<string, Location[]>(); // identifier -> definitions
 const fileText = new Map<string, string>(); // uri -> latest text
 const fileTree = new Map<string, Tree>();
 
+// --- YARD doc rendering ------------------------------------------------------
+
+/** Docs for workspace definitions, keyed by identifier. */
+const defDocs = new Map<string, string>();
+
+/** Renders a raw comment block (plain or YARD-tagged) as markdown. */
+const renderDoc = (raw: string): string => {
+  const intro: string[] = [];
+  const params: string[] = [];
+  const extras: string[] = [];
+  const examples: string[][] = [];
+  let returns = "";
+  let example: string[] | null = null;
+  let continuation: string[] | null = null;
+
+  for (const line of raw.split("\n")) {
+    if (example) {
+      if (line.startsWith("  ") || line.trim() === "") {
+        example.push(line.replace(/^  /, ""));
+        continue;
+      }
+      example = null;
+    }
+
+    const tag = line.match(/^@(\w+)\s*(.*)$/);
+    if (!tag) {
+      if (continuation && line.startsWith("  ")) {
+        continuation.push(line.trim());
+        continue;
+      }
+      continuation = null;
+      intro.push(line);
+      continue;
+    }
+
+    const [, name, rest] = tag;
+    continuation = null;
+    switch (name) {
+      case "example":
+        example = [];
+        examples.push(example);
+        break;
+      case "param": {
+        const p = rest.match(/^(\S+)\s*(?:\[([^\]]*)\])?\s*(.*)$/);
+        if (p) {
+          params.push(
+            `- \`${p[1]}\`${p[2] ? ` (\`${p[2]}\`)` : ""}${
+              p[3] ? ` — ${p[3]}` : ""
+            }`,
+          );
+          continuation = params;
+        }
+        break;
+      }
+      case "return": {
+        const r = rest.match(/^(?:\[([^\]]*)\])?\s*(.*)$/);
+        returns = r ? `${r[1] ? `(\`${r[1]}\`) ` : ""}${r[2] ?? ""}` : rest;
+        break;
+      }
+      case "note":
+        extras.push(`> **Note:** ${rest}`);
+        continuation = extras;
+        break;
+      case "deprecated":
+        extras.push(`> **Deprecated.** ${rest}`);
+        break;
+      case "see":
+        extras.push(`_See:_ ${rest}`);
+        break;
+      default:
+        extras.push(`_@${name}_ ${rest}`);
+    }
+  }
+
+  const sections = [intro.join("\n").trim()];
+  if (params.length) sections.push(`**Parameters**\n${params.join("\n")}`);
+  if (returns) sections.push(`**Returns** ${returns}`);
+  if (extras.length) sections.push(extras.join("\n\n"));
+  for (const code of examples) {
+    const body = code.join("\n").trim();
+    if (body) sections.push("```ruby\n" + body + "\n```");
+  }
+  return sections.filter((s) => s.length > 0).join("\n\n");
+};
+
 const nodeRange = (node: Node) => ({
   start: { line: node.startPosition.row, character: node.startPosition.column },
   end: { line: node.endPosition.row, character: node.endPosition.column },
@@ -367,6 +452,16 @@ const indexFile = (uri: string, text: string) => {
         const list = defs.get(name.text) ?? [];
         list.push({ uri, range: nodeRange(name) });
         defs.set(name.text, list);
+
+        const docLines: string[] = [];
+        let prev = node.previousNamedSibling;
+        while (prev?.type === "comment") {
+          docLines.unshift(prev.text.replace(/^#[ ]?/, ""));
+          prev = prev.previousNamedSibling;
+        }
+        if (docLines.length > 0) {
+          defDocs.set(name.text, renderDoc(docLines.join("\n")));
+        }
       }
     }
     for (let i = 0; i < node.namedChildCount; i++) visit(node.namedChild(i)!);
@@ -879,10 +974,14 @@ const completions = (uri: string, pos: Pos): unknown[] => {
   }
 
   // Fall back to workspace definitions + engine top-levels.
-  const items: unknown[] = [...defs.keys()].map((name) => ({
-    label: name,
-    kind: 3, // Function
-  }));
+  const items: unknown[] = [...defs.keys()].map((name) => {
+    const doc = defDocs.get(name);
+    return {
+      label: name,
+      kind: 3, // Function
+      ...(doc ? { documentation: { kind: "markdown", value: doc } } : {}),
+    };
+  });
   for (const mod of ["Geometry", "Easing"]) {
     if (api.has(mod)) items.push({ label: mod, kind: 9 }); // Module
   }
@@ -920,13 +1019,15 @@ const hover = (uri: string, pos: Pos): unknown => {
   // Workspace definition?
   const found = defs.get(word);
   if (found?.length) {
+    const where = found
+      .map((f) => fromFileUrl(f.uri).split("/").slice(-2).join("/"))
+      .join(", ");
+    const doc = defDocs.get(word);
     return {
       contents: {
         kind: "markdown",
-        value: `**${word}** — defined in ${
-          found.map((f) => fromFileUrl(f.uri).split("/").slice(-2).join("/"))
-            .join(", ")
-        }`,
+        value: `**${word}** — defined in ${where}` +
+          (doc ? `\n\n---\n\n${doc}` : ""),
       },
     };
   }
