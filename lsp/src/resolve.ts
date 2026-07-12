@@ -10,10 +10,13 @@ export type LocalHit = {
 };
 
 /** One resolved receiver type and the rule that produced it. `source` gates the
- * diagnostics extension (only `"literal"` may drive a new warning). */
+ * diagnostics extension (only `"literal"` may drive a new warning). `keys` are
+ * the symbol keys of a hash literal the receiver was assigned — DragonRuby
+ * patches Hash so `h.foo` reads `h[:foo]`, so they complete as members. */
 export type TypeGuess = {
   class: string;
   source: "literal" | "new" | "ivar" | "return";
+  keys?: string[];
 };
 
 // Literal RHS node type -> the core class it constructs. Numeric literals both
@@ -50,6 +53,45 @@ const enclosingMethod = (node: Node): Node | null => {
     if (p.type === "method" || p.type === "singleton_method") return p;
   }
   return null;
+};
+
+// A dangling completion dot (`h.` before `end`) makes tree-sitter eat the
+// following keyword as the method name and collapse the enclosing def into an
+// ERROR node, so `enclosingMethod` finds nothing. The assignment still parses
+// as a sibling statement, so fall back to the nearest statement container.
+const STATEMENT_SCOPES = new Set([
+  "method",
+  "singleton_method",
+  "do_block",
+  "block",
+  "body_statement",
+  "then",
+  "else",
+  "ensure",
+  "begin",
+  "program",
+]);
+const enclosingStatementScope = (node: Node): Node | null => {
+  for (let p = node.parent; p; p = p.parent) {
+    if (STATEMENT_SCOPES.has(p.type)) return p;
+  }
+  return null;
+};
+
+/** Symbol keys of a hash literal (`{ f: 1, :g => 2 }` -> ["f", "g"]). String
+ * keys aren't dot-accessible in DragonRuby, so they're skipped. */
+export const hashLiteralKeys = (hash: Node): string[] => {
+  const keys: string[] = [];
+  for (let i = 0; i < hash.namedChildCount; i++) {
+    const pair = hash.namedChild(i)!;
+    if (pair.type !== "pair") continue;
+    const key = pair.childForFieldName("key") ?? pair.namedChild(0);
+    if (key?.type === "hash_key_symbol") keys.push(key.text);
+    else if (key?.type === "simple_symbol") {
+      keys.push(key.text.replace(/^:/, ""));
+    }
+  }
+  return keys;
 };
 
 const enclosingClass = (node: Node): Node | null => {
@@ -308,8 +350,9 @@ export class Resolver implements ConstResolver {
   // Rule 1 (literal) + rule 2 (`Klass.new`): the nearest preceding same-method
   // assignment of this local.
   #typeLocal(uri: string, receiver: Node): TypeGuess | null {
-    const method = enclosingMethod(receiver);
-    if (!method) return null;
+    const scope = enclosingMethod(receiver) ??
+      enclosingStatementScope(receiver);
+    if (!scope) return null;
     const name = receiver.text;
 
     let best: Node | null = null;
@@ -326,12 +369,19 @@ export class Resolver implements ConstResolver {
       }
       for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
     };
-    scan(method);
+    scan(scope);
     const rhs = (best as Node | null)?.childForFieldName("right");
     if (!rhs) return null;
 
     const core = LITERAL_CLASS[rhs.type];
-    if (core) return { class: core, source: "literal" };
+    if (core) {
+      const keys = rhs.type === "hash" ? hashLiteralKeys(rhs) : undefined;
+      return {
+        class: core,
+        source: "literal",
+        ...(keys?.length ? { keys } : {}),
+      };
+    }
 
     const path = newTargetPath(rhs);
     if (path) {
@@ -352,12 +402,14 @@ export class Resolver implements ConstResolver {
     const name = receiver.text;
 
     const types: (string | null)[] = [];
+    const rhsNodes: Node[] = [];
     const scan = (n: Node) => {
       if (n.type === "assignment") {
         const left = n.childForFieldName("left");
         if (left?.type === "instance_variable" && left.text === name) {
           const rhs = n.childForFieldName("right");
           types.push(rhs ? this.#assignedClass(rhs, left) : null);
+          if (rhs) rhsNodes.push(rhs);
         }
       }
       for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
@@ -366,7 +418,17 @@ export class Resolver implements ConstResolver {
 
     if (types.length === 0 || types.some((t) => t === null)) return null;
     const uniq = new Set(types);
-    return uniq.size === 1 ? { class: [...uniq][0]!, source: "ivar" } : null;
+    if (uniq.size !== 1) return null;
+    // A single hash-literal assignment exposes its keys; multiple assignments
+    // (even all hashes) don't share a known key set.
+    const keys = rhsNodes.length === 1 && rhsNodes[0].type === "hash"
+      ? hashLiteralKeys(rhsNodes[0])
+      : undefined;
+    return {
+      class: [...uniq][0]!,
+      source: "ivar",
+      ...(keys?.length ? { keys } : {}),
+    };
   }
 
   #assignedClass(rhs: Node, site: Node): string | null {

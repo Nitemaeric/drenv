@@ -380,6 +380,30 @@ describe("Resolver.receiverType — literal (rule 1)", () => {
     const r = new Resolver(ws);
     assertEquals(r.receiverType(uri, receiverOf(ws, uri, "each")), null);
   });
+
+  it("exposes a hash literal's symbol keys (DragonRuby dot-access)", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      'def m\n  a = { x: 1, :y => 2, "s" => 3 }\n  a.each\nend\n',
+    );
+    const r = new Resolver(ws);
+    const g = r.receiverType(uri, receiverOf(ws, uri, "each"));
+    assertEquals(g?.class, "Hash");
+    // Symbol keys only; the string key "s" is not dot-accessible.
+    assertEquals(g?.keys, ["x", "y"]);
+  });
+
+  it("types a local even when a dangling dot collapsed the enclosing def", () => {
+    // `h.` before `end` parses as `h.end`, eating the keyword and turning the
+    // def into an ERROR node — the assignment still resolves via the fallback.
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "def m\n  h = { k: 1 }\n  h.\nend\n");
+    const r = new Resolver(ws);
+    const dot = receiverOf(ws, uri, "end"); // the mis-parsed `h.end` receiver
+    assertEquals(r.receiverType(uri, dot)?.class, "Hash");
+    assertEquals(r.receiverType(uri, dot)?.keys, ["k"]);
+  });
 });
 
 describe("Resolver.receiverType — new (rule 2)", () => {

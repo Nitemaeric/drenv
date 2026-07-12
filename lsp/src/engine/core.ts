@@ -93,6 +93,13 @@ export const CORE_BASELINE: Record<string, string[]> = {
     "min_by",
     "max_by",
     "sum",
+    // DragonRuby Hash conveniences: shorthand that stamps a primitive_marker
+    // so a plain hash renders as the named primitive. Not in the OSS source.
+    "sprite!",
+    "label!",
+    "solid!",
+    "border!",
+    "line!",
   ],
   String: [
     "length",

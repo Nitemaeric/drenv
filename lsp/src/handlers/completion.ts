@@ -1,4 +1,4 @@
-import { CORE_CLASSES, literalCoreClass } from "../resolve.ts";
+import { CORE_CLASSES, hashLiteralKeys, literalCoreClass } from "../resolve.ts";
 import type { Node } from "../ruby.ts";
 import type { Def, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
@@ -39,15 +39,27 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
   if (cls) return completeCore(cls);
 
   // One-hop typed receiver: `enemies = []` → `enemies.` completes Array;
-  // `@anim = Klass.new` → `@anim.` completes the class's methods (inherited too).
+  // `@anim = Klass.new` → `@anim.` completes the class's methods (inherited too);
+  // `h = { f: 1 }` → `h.` completes the hash's keys (DragonRuby dot-access) too.
   const recv = receiverNode(ctx, uri, pos, prefix);
   if (recv) {
-    const guess = literalCoreClass(recv) ??
-      resolver.receiverType(uri, recv)?.class;
-    if (guess) {
-      if (CORE_CLASSES.has(guess)) return completeCore(guess);
-      const typed = classMethodCompletions(ctx, guess);
-      if (typed.length > 0) return typed;
+    const lit = literalCoreClass(recv);
+    const guess = lit
+      ? { class: lit, keys: recv.type === "hash" ? hashLiteralKeys(recv) : [] }
+      : resolver.receiverType(uri, recv);
+    if (guess?.class) {
+      const keyItems = (guess.keys ?? []).map((key) => ({
+        label: key,
+        kind: 5, // Field
+        detail: "hash key",
+      }));
+      if (CORE_CLASSES.has(guess.class)) {
+        return [...keyItems, ...completeCore(guess.class)];
+      }
+      const typed = classMethodCompletions(ctx, guess.class);
+      if (keyItems.length > 0 || typed.length > 0) {
+        return [...keyItems, ...typed];
+      }
     }
   }
 

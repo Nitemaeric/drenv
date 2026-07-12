@@ -1070,6 +1070,11 @@ def variable_demo
   enemies.each
 end
 
+def hash_demo
+  cfg = { hp: 100, name: "hero" }
+  cfg.
+end
+
 def core_hover_demo
   [1, 2].each
 end
@@ -1188,6 +1193,26 @@ check(
   "p3: variable receiver `enemies = []` completes Array methods",
   varLabels.includes("each") && varLabels.includes("map"),
   `${varLabels.length} items`,
+);
+
+// P3: a hash-literal local completes its symbol keys (DragonRuby dot-access)
+// alongside Hash methods incl. the primitive-marker conveniences — and this
+// dangling `cfg.` sits right before `end`, the degraded-tree case.
+const hashCompletion = await p23Sess.request("textDocument/completion", {
+  textDocument: { uri: p23MainUri },
+  position: endOf("cfg."),
+});
+// deno-lint-ignore no-explicit-any
+const hashItems: any[] = hashCompletion ?? [];
+const hashLabels = hashItems.map((c) => c.label);
+const keyLabels = hashItems.filter((c) => c.detail === "hash key").map((c) =>
+  c.label
+);
+check(
+  "p3: hash-literal local completes its keys + DR Hash conveniences",
+  keyLabels.includes("hp") && keyLabels.includes("name") &&
+    hashLabels.includes("sprite!") && hashLabels.includes("keys"),
+  `keys: ${keyLabels.join(", ")}`,
 );
 
 // P3: @return-unique dispatch — `camera.ui.draw` types `ui` by its unique
