@@ -160,6 +160,31 @@ describe("definition", () => {
     const ctx = ctxOf({ "a.rb": NAV });
     assertEquals(definition(ctx, uri("a.rb"), { line: 4, character: 0 }), []);
   });
+
+  it("resolves a bare constant only where lexical lookup reaches it", () => {
+    const main = "module Main\n  def boot\n    Layout\n  end\nend\n";
+    const ctx = ctxOf({
+      "lib.rb":
+        "module Conjuration\n  module UI\n    class Layout\n    end\n  end\nend\n",
+      "main.rb": main,
+    });
+    // `Layout` inside Main sees Main::Layout / ::Layout — neither exists here,
+    // so it must NOT jump to the unrelated Conjuration::UI::Layout.
+    assertEquals(definition(ctx, uri("main.rb"), at(main, "Layout", 2)), []);
+  });
+
+  it("jumps a bare constant to its lexically-visible def", () => {
+    const main =
+      "module Main\n  class Layout\n  end\n  def boot\n    Layout\n  end\nend\n";
+    const ctx = ctxOf({
+      "lib.rb":
+        "module Conjuration\n  module UI\n    class Layout\n    end\n  end\nend\n",
+      "main.rb": main,
+    });
+    const out = definition(ctx, uri("main.rb"), at(main, "Layout", 4));
+    assertEquals(out.length, 1);
+    assertEquals(out[0].range.start.line, 1); // Main::Layout, not Conjuration's
+  });
 });
 
 describe("references", () => {

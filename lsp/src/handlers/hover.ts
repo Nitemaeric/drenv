@@ -145,6 +145,27 @@ export const hover = (ctx: Ctx, uri: string, pos: Pos): unknown => {
       );
     }
 
+    // A bare constant resolves by Ruby's lexical lookup (enclosing namespaces,
+    // then top-level) — never an unrelated namespace that merely shares the
+    // name. `Layout` inside `Main` sees `Main::Layout` / `::Layout`, not
+    // `Conjuration::UI::Layout`.
+    if (
+      nodeAt?.type === "constant" && nodeAt.parent?.type !== "scope_resolution"
+    ) {
+      const def = resolver.resolveConst(
+        word,
+        resolver.enclosingNamespace(nodeAt),
+      );
+      if (!def) return null;
+      const key = def.container ? `${def.container}::${word}` : word;
+      return md(
+        `**${key}** — defined in ${rel(def.uri)}` +
+          (def.doc
+            ? `\n\n---\n\n${yard.render(def.doc, def.container ?? "")}`
+            : ""),
+      );
+    }
+
     // A bare call inside a class resolves like Ruby would: own class first,
     // then up the superclass chain, then same-file.
     let candidates = found;

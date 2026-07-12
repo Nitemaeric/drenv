@@ -321,6 +321,27 @@ describe("hover — ambiguous candidate list", () => {
   });
 });
 
+describe("hover — bare constant lexical lookup", () => {
+  const LIB =
+    "module Conjuration\n  module UI\n    # Flexbox layout.\n    class Layout\n    end\n  end\nend\n";
+
+  it("does not resolve to an unrelated namespace sharing the name", () => {
+    const main = "module Main\n  def boot\n    Layout\n  end\nend\n";
+    const ctx = ctxOf({ "lib.rb": LIB, "main.rb": main });
+    // `Layout` inside Main sees Main::Layout / ::Layout, never Conjuration's.
+    assertEquals(hover(ctx, uri("main.rb"), at(main, "Layout", 2)), null);
+  });
+
+  it("resolves to a lexically-visible constant", () => {
+    const main =
+      "module Main\n  # A grid.\n  class Layout\n  end\n  def boot\n    Layout\n  end\nend\n";
+    const ctx = ctxOf({ "lib.rb": LIB, "main.rb": main });
+    const out = value(hover(ctx, uri("main.rb"), at(main, "Layout", 5)));
+    assertStringIncludes(out, "**Main::Layout**");
+    assertStringIncludes(out, "A grid.");
+  });
+});
+
 describe("hover — misses", () => {
   it("returns null on whitespace", () => {
     const ctx = ctxOf({ "a.rb": FX });
