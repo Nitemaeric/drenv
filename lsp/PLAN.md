@@ -229,12 +229,15 @@ Files: `lsp/server.ts` (server), `lsp/client-test.ts` (scripted protocol client
 
 ### P4 — Distribution & setup UX
 
-- `drenv lsp setup`: detect editor(s), write/print per-editor config (Zed
-  `.zed/settings.json`, VS Code, Neovim lspconfig snippet), point at
-  `drenv lsp`. Zero-config goal: install drenv → run one command → editor
-  intelligence.
-- Publish the Zed extension to the registry; ship a minimal VS Code extension
-  (marketplace).
+- Distribution rides the editors' own channels (the ecosystem norm — servers
+  don't write editor config): publish the Zed extension to the Zed registry and
+  the VS Code extension to the marketplace. Neovim is out of scope for
+  distribution (a config snippet lives in `editors/nvim/README.md` for anyone
+  who wants it).
+- `drenv lsp doctor` (optional, read-only): diagnose a broken connection —
+  project markers detected here, engine found, binary on PATH, editors installed
+  — and print copy-paste config for unpublished setups. drenv never writes
+  another app's config files.
 - Docs: site page + `docs/lsp.md`; demo clip via the existing Remotion pipeline
   (`demos/`).
 - Release as **experimental** in a minor (`drenv lsp` clearly labeled), keep the
