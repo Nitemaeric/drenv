@@ -36,7 +36,33 @@ const FIXTURE = `def sig_demo
 end
 `;
 
+// A doc-only (C-implemented) Array method whose single code fence makes its
+// signature unambiguous — reachable through a one-hop typed variable receiver.
+const ARRAY_MD = [
+  "# Array",
+  "",
+  "## `combine`",
+  "",
+  "Combines two collections.",
+  "",
+  "```ruby",
+  "def combine other, weight",
+  "end",
+  "```",
+  "",
+  "## `Array` Class Methods",
+  "",
+  "- `filter_map`",
+].join("\n");
+
+const TYPED = `def typed_sig
+  items = []
+  items.combine(a, b)
+end
+`;
+
 const URI = "file:///test/sig.rb";
+const TYPED_URI = "file:///test/typed_sig.rb";
 
 // deno-lint-ignore no-explicit-any
 type Sig = any;
@@ -55,6 +81,7 @@ beforeAll(async () => {
     join(dir, "docs", "oss", "dragon", "geometry.rb"),
     GEOMETRY_RB,
   );
+  await Deno.writeTextFile(join(dir, "docs", "api", "array.md"), ARRAY_MD);
 
   const ws = new Workspace(ruby);
   const resolver = new Resolver(ws);
@@ -62,6 +89,7 @@ beforeAll(async () => {
   const engine = await EngineIndex.build(ruby, dir);
   ctx = { ws, resolver, yard, engine };
   ws.indexFile(URI, FIXTURE);
+  ws.indexFile(TYPED_URI, TYPED);
 });
 
 afterAll(async () => {
@@ -148,5 +176,17 @@ describe("signatureHelp", () => {
   it("returns null outside any call", () => {
     const sig = signatureHelp(ctx, URI, { line: 0, character: 3 });
     assertEquals(sig, null);
+  });
+
+  it("helps a one-hop typed variable receiver (items = []; items.combine)", () => {
+    const line = TYPED.split("\n").findIndex((l) =>
+      l.includes("items.combine")
+    );
+    const col = TYPED.split("\n")[line].indexOf("(a,") + 1;
+    const sig: Sig = signatureHelp(ctx, TYPED_URI, { line, character: col });
+    assert(sig, "expected signature help via the inferred Array type");
+    assertEquals(sig.signatures[0].label, "items.combine(other, weight)");
+    assertEquals(sig.signatures[0].parameters.length, 2);
+    assertEquals(sig.activeParameter, 0);
   });
 });

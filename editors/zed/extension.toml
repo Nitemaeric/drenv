@@ -8,4 +8,4 @@ repository = "https://github.com/Nitemaeric/drenv"
 
 [language_servers.drenv]
 name = "drenv"
-languages = ["Ruby"]
+languages = ["Ruby", "TOML"]

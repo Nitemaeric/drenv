@@ -10,7 +10,8 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:ruby"
+    "onLanguage:ruby",
+    "onLanguage:toml"
   ],
   "main": "./dist/extension.js",
   "scripts": {

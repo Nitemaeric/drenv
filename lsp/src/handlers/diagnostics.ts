@@ -1,79 +1,33 @@
 import type { Node } from "../ruby.ts";
 import type { Param } from "../types.ts";
 import { nodeRange } from "../analyze.ts";
+import {
+  arrayPrimitivesRule,
+  bulkConcatRule,
+  mutationDuringIteration,
+  recursionRule,
+  type SeverityAt,
+  tickReachability,
+  unusedMapRule,
+} from "../perf.ts";
 import type { Ctx } from "./ctx.ts";
-
-// --- performance hints (from the engine's troubleshoot-performance guide) ---
-
-const MUTATORS = new Set([
-  "delete",
-  "delete_at",
-  "delete_if",
-  "push",
-  "unshift",
-  "pop",
-  "shift",
-  "clear",
-  "concat",
-  "insert",
-  "reject!",
-  "select!",
-]);
-
-const PERF_GUIDE =
-  "https://docs.dragonruby.org/#/guides/troubleshoot-performance?id=array-manipulation";
 
 // Label keys (`anchor_x:`) surface without a colon; hash-rocket symbol keys
 // (`:anchor_x =>`) carry a leading one. Strip both so lookups match param names.
 const normKey = (text: string) => text.replace(/^:/, "").replace(/:$/, "");
 
-// Flags mutation of a collection inside its own `.each` block — the guide's
-// "Array Manipulation" antipattern (collect changes, apply after the loop).
-const mutationDuringIteration = (node: Node, out: unknown[]) => {
-  if (node.type !== "call") return;
-  if (node.childForFieldName("method")?.text !== "each") return;
-  const receiver = node.childForFieldName("receiver")?.text;
-  const block = node.childForFieldName("block");
-  if (!receiver || !block) return;
-
-  const flag = (target: Node, how: string) =>
-    out.push({
-      range: nodeRange(target),
-      severity: 3, // Information
-      source: "drenv",
-      code: "array-manipulation",
-      codeDescription: { href: PERF_GUIDE },
-      message:
-        `\`${receiver}\` is ${how} while it's being iterated — collect ` +
-        `changes and apply them after the loop (e.g. \`reject!\`). ` +
-        `See: Troubleshoot Performance → Array Manipulation.`,
-    });
-
-  const scan = (n: Node) => {
-    if (n.type === "call") {
-      const method = n.childForFieldName("method");
-      if (
-        method && MUTATORS.has(method.text) &&
-        n.childForFieldName("receiver")?.text === receiver
-      ) {
-        flag(n, `mutated (\`${method.text}\`)`);
-      }
-    }
-    if (n.type === "binary") {
-      const operator = n.childForFieldName("operator")?.text;
-      if (operator === "<<" && n.childForFieldName("left")?.text === receiver) {
-        flag(n, "appended to (`<<`)");
-      }
-    }
-    for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
-  };
-  scan(block);
+const enclosingMethod = (node: Node): Node | null => {
+  for (let p = node.parent; p; p = p.parent) {
+    if (p.type === "method" || p.type === "singleton_method") return p;
+  }
+  return null;
 };
 
 export const diagnostics = (ctx: Ctx, uri: string): unknown[] => {
   const tree = ctx.ws.fileTree(uri);
   if (!tree) return [];
   const out: unknown[] = [];
+  const severityAt: SeverityAt = tickReachability(ctx.ws);
 
   const visit = (node: Node) => {
     if (node.type === "ERROR" || node.isMissing) {
@@ -131,14 +85,26 @@ export const diagnostics = (ctx: Ctx, uri: string): unknown[] => {
           );
 
           // A hash-literal must carry the geometric attrs the engine's own
-          // body reads off the parameter. Literals only — variables would
-          // need type inference.
+          // body reads off the parameter. An identifier argument is resolved
+          // through ONE hop to its same-method literal hash (unreassigned,
+          // unmutated — resolver-gated) and checked exactly as if inline; any
+          // other receiver-typing source stays out of diagnostics (principle 2).
+          const callerMethod = enclosingMethod(node);
           const shapeCheck = (arg: Node, param: Param, where: string) => {
-            if (arg.type !== "hash" || !param.shape) return;
+            if (!param.shape) return;
+            let hash = arg;
+            if (arg.type === "identifier") {
+              const lit = callerMethod
+                ? ctx.resolver.sameMethodLiteral(callerMethod, arg.text)
+                : null;
+              if (!lit) return;
+              hash = lit;
+            }
+            if (hash.type !== "hash") return;
             const keys = new Set<string>();
             let splat = false;
-            for (let j = 0; j < arg.namedChildCount; j++) {
-              const pair = arg.namedChild(j)!;
+            for (let j = 0; j < hash.namedChildCount; j++) {
+              const pair = hash.namedChild(j)!;
               if (pair.type !== "pair") {
                 splat = true;
                 break;
@@ -249,6 +215,10 @@ export const diagnostics = (ctx: Ctx, uri: string): unknown[] => {
     }
 
     mutationDuringIteration(node, out);
+    arrayPrimitivesRule(node, out, severityAt);
+    bulkConcatRule(node, out, severityAt);
+    recursionRule(node, out, severityAt);
+    unusedMapRule(node, out, severityAt);
 
     for (let i = 0; i < node.namedChildCount; i++) visit(node.namedChild(i)!);
   };

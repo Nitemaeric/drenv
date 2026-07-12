@@ -1,7 +1,28 @@
 import { fromFileUrl } from "@std/path";
 
+import type { Node } from "../ruby.ts";
 import type { Def, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
+
+const CORE_CLASSES = new Set(["Array", "Hash", "String", "Numeric", "Symbol"]);
+
+// A literal receiver node names its class outright.
+const literalCore = (n: Node): string | null => {
+  switch (n.type) {
+    case "array":
+      return "Array";
+    case "hash":
+      return "Hash";
+    case "string":
+      return "String";
+    case "integer":
+    case "float":
+      return "Numeric";
+    case "simple_symbol":
+      return "Symbol";
+  }
+  return null;
+};
 
 export const hover = (ctx: Ctx, uri: string, pos: Pos): unknown => {
   const { ws, resolver, yard, engine } = ctx;
@@ -83,14 +104,50 @@ export const hover = (ctx: Ctx, uri: string, pos: Pos): unknown => {
     );
   }
 
+  // Receiver-typed method: when `word` is the method of a call `recv.word`,
+  // type `recv` one hop and resolve `word` against that class — a literal/core
+  // receiver borrows the engine's method docs; a workspace class pins the def.
+  const call = nodeAt?.parent?.type === "call" &&
+      nodeAt.parent.childForFieldName("method")?.id === nodeAt.id
+    ? nodeAt.parent
+    : null;
+  const recv = call?.childForFieldName("receiver") ?? null;
+  if (recv) {
+    const cls = literalCore(recv) ?? resolver.receiverType(uri, recv)?.class;
+    if (cls) {
+      const doc = engine.methodDocs(cls)?.get(word);
+      if (doc && CORE_CLASSES.has(cls)) {
+        return md(`**${cls}#${word}** — DragonRuby ${engine.label}\n\n${doc}`);
+      }
+      if (!CORE_CLASSES.has(cls)) {
+        const rel = (u: string) =>
+          fromFileUrl(u).split("/").slice(-2).join("/");
+        const chain = classChain(ctx, cls);
+        const inChain = (ws.defs.get(word) ?? []).filter((f) =>
+          f.kind === "method" && chain.has(f.container ?? "")
+        );
+        const names = [...new Set(inChain.map((f) => qualifiedName(f, word)))];
+        if (names.length === 1) {
+          const files = [...new Set(inChain.map((f) => rel(f.uri)))];
+          const documented = inChain.find((f) => f.doc);
+          return md(
+            `**${names[0]}** — defined in ${files.slice(0, 3).join(", ")}` +
+              (documented?.doc
+                ? `\n\n---\n\n${
+                  yard.render(documented.doc, documented.container ?? "")
+                }`
+                : ""),
+          );
+        }
+      }
+    }
+  }
+
   // Workspace definition?
   const found = ws.defs.get(word);
   if (found?.length) {
     const rel = (u: string) => fromFileUrl(u).split("/").slice(-2).join("/");
-    const qualified = (f: Def) =>
-      f.container
-        ? `${f.container}${f.kind === "method" ? "#" : "::"}${word}`
-        : word;
+    const qualified = (f: Def) => qualifiedName(f, word);
 
     // Hovering the def itself pins down exactly which one it is.
     const at = found.find((f) =>
@@ -144,4 +201,32 @@ export const hover = (ctx: Ctx, uri: string, pos: Pos): unknown => {
     );
   }
   return null;
+};
+
+// `Class#method` for instance methods, `Class.method` for singletons (P3),
+// `Namespace::Const` for classes/modules.
+const qualifiedName = (f: Def, word: string): string => {
+  if (!f.container) return word;
+  if (f.kind === "method") {
+    return `${f.container}${f.singleton ? "." : "#"}${word}`;
+  }
+  return `${f.container}::${word}`;
+};
+
+const classChain = (ctx: Ctx, qualified: string): Set<string> => {
+  const { resolver } = ctx;
+  const nsIndex = resolver.namespaceIndex();
+  const chain = new Set<string>();
+  let ns = qualified;
+  while (ns && !chain.has(ns)) {
+    chain.add(ns);
+    const def: Def | undefined = nsIndex.get(ns);
+    ns = def?.superclass
+      ? resolver.resolveConstName(
+        def.superclass,
+        ns.split("::").slice(0, -1).join("::"),
+      ) ?? ""
+      : "";
+  }
+  return chain;
 };

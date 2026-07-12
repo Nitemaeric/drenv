@@ -1,6 +1,6 @@
 import { nodeRange } from "../analyze.ts";
 import type { Node } from "../ruby.ts";
-import type { Loc, Pos } from "../types.ts";
+import type { Def, Loc, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
 
 export const definition = (ctx: Ctx, uri: string, pos: Pos): Loc[] => {
@@ -10,10 +10,46 @@ export const definition = (ctx: Ctx, uri: string, pos: Pos): Loc[] => {
   const local = resolver.resolveLocal(uri, pos, word);
   if (local) return [{ uri, range: nodeRange(local.node) }];
   const found = ws.defs.get(word) ?? [];
-  const narrowed = found.length > 1
-    ? resolver.contextCandidates(uri, pos, found) ?? found
-    : found;
+
+  let narrowed = found;
+  if (found.length > 1) {
+    // A one-hop inferred receiver type filters candidates to that class chain,
+    // ahead of the enclosing-class/superclass/same-file tiers.
+    const typed = receiverNarrow(ctx, uri, pos, found);
+    narrowed = typed ?? resolver.contextCandidates(uri, pos, found) ?? found;
+  }
   return narrowed.map(({ uri, range }) => ({ uri, range }));
+};
+
+// When `word` is the method of a call `recv.word`, type `recv` one hop and keep
+// only candidates defined on that class or its superclass chain. methodsOf
+// returns the same Def references stored in the index, so an identity test is
+// exact. null when nothing types or the filter is empty (fall through).
+const receiverNarrow = (
+  ctx: Ctx,
+  uri: string,
+  pos: Pos,
+  found: Def[],
+): Def[] | null => {
+  const { ws, resolver } = ctx;
+  const node = ws.fileTree(uri)?.rootNode.descendantForPosition({
+    row: pos.line,
+    column: pos.character,
+  });
+  const call = node?.parent?.type === "call" &&
+      node.parent.childForFieldName("method")?.id === node.id
+    ? node.parent
+    : null;
+  const recv = call?.childForFieldName("receiver");
+  if (!recv) return null;
+  const cls = resolver.receiverType(uri, recv)?.class;
+  if (!cls) return null;
+  const chain = new Set([
+    ...resolver.methodsOf(cls),
+    ...resolver.methodsOf(cls, { singleton: true }),
+  ]);
+  const inChain = found.filter((f) => chain.has(f));
+  return inChain.length > 0 ? inChain : null;
 };
 
 export const references = (ctx: Ctx, uri: string, pos: Pos): Loc[] => {

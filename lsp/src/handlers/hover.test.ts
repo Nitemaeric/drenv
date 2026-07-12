@@ -148,6 +148,69 @@ describe("hover — engine api", () => {
   });
 });
 
+describe("hover — receiver-typed method (one hop)", () => {
+  it("borrows engine docs for a core method on a literal receiver", async () => {
+    const dir = join(base, "engine-array", "7.11");
+    await ensureDir(join(dir, "docs", "oss", "dragon"));
+    await ensureDir(join(dir, "docs", "api"));
+    await Deno.writeTextFile(
+      join(dir, "docs", "api", "array.md"),
+      "# Array\n\n## `map_2d`\n\nMaps over a two-dimensional grid.\n",
+    );
+    const engine = await EngineIndex.build(ruby, dir);
+
+    const src = "def go\n  [1, 2].map_2d\nend\n";
+    const ctx = ctxOf({ "m.rb": src }, engine);
+    const out = value(hover(ctx, uri("m.rb"), at(src, "map_2d", 1)));
+    assertStringIncludes(out, "**Array#map_2d** — DragonRuby 7.11");
+    assertStringIncludes(out, "Maps over a two-dimensional grid.");
+  });
+
+  it("resolves a method against an ivar's `Klass.new` type", () => {
+    const src = [
+      "class Animation", // 0
+      "  # Starts playback.", // 1
+      "  def play", // 2
+      "  end", // 3
+      "end", // 4
+      "class Sprite", // 5
+      "  def setup", // 6
+      "    @anim = Animation.new", // 7
+      "  end", // 8
+      "  def update", // 9
+      "    @anim.play", // 10
+      "  end", // 11
+      "end", // 12
+    ].join("\n");
+    const ctx = ctxOf({ "s.rb": src });
+    const out = value(hover(ctx, uri("s.rb"), at(src, "play", 10)));
+    assertStringIncludes(out, "**Animation#play** — defined in");
+    assertStringIncludes(out, "Starts playback.");
+  });
+
+  it("dispatches through a unique method's @return (camera.ui.view)", () => {
+    const src = [
+      "class UI", // 0
+      "  # Renders the active view.", // 1
+      "  def view", // 2
+      "  end", // 3
+      "end", // 4
+      "class Camera", // 5
+      "  # @return [UI] the ui manager", // 6
+      "  def ui", // 7
+      "  end", // 8
+      "  def tick", // 9
+      "    ui.view", // 10
+      "  end", // 11
+      "end", // 12
+    ].join("\n");
+    const ctx = ctxOf({ "u.rb": src });
+    const out = value(hover(ctx, uri("u.rb"), at(src, "view", 10)));
+    assertStringIncludes(out, "**UI#view** — defined in");
+    assertStringIncludes(out, "Renders the active view.");
+  });
+});
+
 describe("hover — locals", () => {
   it("resolves a parameter with its @param type and description", () => {
     const ctx = ctxOf({ "a.rb": FX });

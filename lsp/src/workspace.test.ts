@@ -132,6 +132,41 @@ describe("Workspace.indexFile", () => {
   });
 });
 
+describe("Workspace.indexFile singleton methods", () => {
+  it("indexes `def self.x` as a singleton method, skipping non-self receivers", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "class UI",
+        "  # Builds the UI.",
+        "  def self.build",
+        "  end",
+        "  def render",
+        "  end",
+        "  def OtherConst.helper",
+        "  end",
+        "end",
+        "",
+      ].join("\n"),
+    );
+
+    const build = ws.defs.get("build")!;
+    assertEquals(build.length, 1);
+    assertEquals(build[0].kind, "method");
+    assertEquals(build[0].singleton, true);
+    assertEquals(build[0].container, "UI");
+    assertEquals(build[0].doc, "Builds the UI.");
+    // Range points at the name token.
+    assertEquals(build[0].range.start.line, 2);
+
+    // Instance methods carry no singleton flag.
+    assertEquals(ws.defs.get("render")![0].singleton, undefined);
+    // A non-`self` receiver isn't provably this namespace — skipped entirely.
+    assertEquals(ws.defs.get("helper"), undefined);
+  });
+});
+
 describe("Workspace.applyEdits", () => {
   it("applies a ranged insertion and reparses the file", () => {
     const ws = new Workspace(ruby);

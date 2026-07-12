@@ -1,6 +1,6 @@
 // drenv lsp — production entry. Wires the src/ modules over stdio; all logic
 // lives in those modules (behavior reference: git history of this file).
-import { fromFileUrl, resolve } from "@std/path";
+import { basename, fromFileUrl, resolve } from "@std/path";
 
 import { Connection, readMessages, type RpcMessage } from "./src/protocol.ts";
 import { Ruby } from "./src/ruby.ts";
@@ -14,6 +14,43 @@ import { hover } from "./src/handlers/hover.ts";
 import { definition, references } from "./src/handlers/navigation.ts";
 import { signatureHelp } from "./src/handlers/signature.ts";
 import { diagnostics } from "./src/handlers/diagnostics.ts";
+import {
+  manifestCompletion,
+  manifestDiagnostics,
+} from "./src/handlers/manifest.ts";
+import type { Pos } from "./src/types.ts";
+
+// Only `drenv.toml` gets the manifest service; every other `.toml` is ignored,
+// and toml never enters the ruby index.
+const isToml = (uri: string) => uri.endsWith(".toml");
+const isManifest = (uri: string) => basename(fromFileUrl(uri)) === "drenv.toml";
+
+// Apply LSP contentChanges to a plain string (manifest buffers stay out of the
+// tree-sitter overlay). JS string indices are UTF-16 code units, matching the
+// LSP position encoding we negotiate.
+const offsetAt = (text: string, pos: Pos): number => {
+  let offset = 0;
+  for (let line = 0; line < pos.line; line++) {
+    const nl = text.indexOf("\n", offset);
+    if (nl === -1) return text.length;
+    offset = nl + 1;
+  }
+  return Math.min(offset + pos.character, text.length);
+};
+
+// deno-lint-ignore no-explicit-any
+const applyTextChanges = (text: string, changes: any[]): string => {
+  for (const change of changes) {
+    if (change.range === undefined) {
+      text = change.text;
+      continue;
+    }
+    const start = offsetAt(text, change.range.start);
+    const end = offsetAt(text, change.range.end);
+    text = text.slice(0, start) + change.text + text.slice(end);
+  }
+  return text;
+};
 
 export default async function lsp() {
   const ruby = await Ruby.init();
@@ -28,10 +65,19 @@ export default async function lsp() {
   // watched-file events must not clobber them.
   const openUris = new Set<string>();
 
+  // Open `drenv.toml` buffers, held as raw text (never the ruby index).
+  const tomlDocs = new Map<string, string>();
+
   const publishDiagnostics = (uri: string) =>
     conn.notify("textDocument/publishDiagnostics", {
       uri,
       diagnostics: ctx ? diagnostics(ctx, uri) : [],
+    });
+
+  const publishManifest = (uri: string) =>
+    conn.notify("textDocument/publishDiagnostics", {
+      uri,
+      diagnostics: manifestDiagnostics(tomlDocs.get(uri) ?? ""),
     });
 
   const initialize = async (id: number | string, params: any) => {
@@ -113,8 +159,22 @@ export default async function lsp() {
             ctx.ws.removeFile(uri);
           }
         }
-      } else if (uri.endsWith("drenv.lock") || uri.endsWith("drenv.toml")) {
+      } else if (uri.endsWith("drenv.lock")) {
         rescan = true;
+      } else if (isManifest(uri)) {
+        // A manifest change may alter the dependency graph (re-scan), and — for
+        // a drenv.toml with no open buffer — refreshes its manifest diagnostics
+        // from disk. Open buffers keep their overlay and refresh via didChange.
+        rescan = true;
+        if (!tomlDocs.has(uri)) {
+          const diagnostics = await Deno.readTextFile(fromFileUrl(uri))
+            .then((t) => manifestDiagnostics(t))
+            .catch(() => []);
+          await conn.notify("textDocument/publishDiagnostics", {
+            uri,
+            diagnostics,
+          });
+        }
       }
     }
 
@@ -176,14 +236,26 @@ export default async function lsp() {
         if (ctx) registerWatchers();
         return;
 
-      case "textDocument/didOpen":
-        openUris.add(params.textDocument.uri);
-        ctx?.ws.indexFile(params.textDocument.uri, params.textDocument.text);
-        return publishDiagnostics(params.textDocument.uri);
+      case "textDocument/didOpen": {
+        const uri = params.textDocument.uri;
+        if (isToml(uri)) {
+          if (!isManifest(uri)) return; // other toml ignored silently
+          tomlDocs.set(uri, params.textDocument.text);
+          return publishManifest(uri);
+        }
+        openUris.add(uri);
+        ctx?.ws.indexFile(uri, params.textDocument.text);
+        return publishDiagnostics(uri);
+      }
 
       case "textDocument/didChange": {
         const uri = params.textDocument.uri;
         const changes = params.contentChanges;
+        if (isToml(uri)) {
+          if (!isManifest(uri)) return;
+          tomlDocs.set(uri, applyTextChanges(tomlDocs.get(uri) ?? "", changes));
+          return publishManifest(uri);
+        }
         if (ctx) {
           if (changes.length === 1 && changes[0].range === undefined) {
             ctx.ws.indexFile(uri, changes[0].text); // full-text fallback
@@ -194,17 +266,38 @@ export default async function lsp() {
         return publishDiagnostics(uri);
       }
 
-      case "textDocument/didClose":
-        return didClose(params.textDocument.uri);
+      case "textDocument/didClose": {
+        const uri = params.textDocument.uri;
+        if (isToml(uri)) {
+          if (tomlDocs.delete(uri)) {
+            await conn.notify("textDocument/publishDiagnostics", {
+              uri,
+              diagnostics: [],
+            });
+          }
+          return;
+        }
+        return didClose(uri);
+      }
 
       case "workspace/didChangeWatchedFiles":
         return didChangeWatchedFiles(params);
 
-      case "textDocument/completion":
+      case "textDocument/completion": {
+        const uri = params.textDocument.uri;
+        if (isToml(uri)) {
+          return conn.respond(
+            id!,
+            isManifest(uri)
+              ? manifestCompletion(tomlDocs.get(uri) ?? "", params.position)
+              : [],
+          );
+        }
         return conn.respond(
           id!,
-          ctx ? completion(ctx, params.textDocument.uri, params.position) : [],
+          ctx ? completion(ctx, uri, params.position) : [],
         );
+      }
 
       case "textDocument/signatureHelp":
         return conn.respond(

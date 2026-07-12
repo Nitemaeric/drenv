@@ -2,7 +2,7 @@ import { parse } from "@std/toml";
 
 export type SourceKind = "github" | "url" | "git" | "path";
 
-const SOURCE_KINDS: SourceKind[] = ["github", "url", "git", "path"];
+export const SOURCE_KINDS: SourceKind[] = ["github", "url", "git", "path"];
 
 export type DependencySpec = {
   name: string;

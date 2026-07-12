@@ -61,9 +61,61 @@ end
 
 const URI = "file:///test/main.rb";
 
+// One-hop typed receivers: a local typed by a literal RHS (Array), and instance
+// variable / local typed by `Klass.new` completing the class's own + inherited
+// methods.
+// Complete `recv.method` calls (cursor lands just after the dot): the trailing
+// method keeps the receiver parsing cleanly instead of chaining into `end`, so
+// the AST receiver resolves — the completion ignores the partial method text.
+const TYPED = `class Base
+  def shared
+  end
+end
+
+class Animation < Base
+  # Starts playback.
+  def play
+  end
+  def stop
+  end
+end
+
+class Sprite
+  def setup
+    @anim = Animation.new
+  end
+
+  def use_enemies
+    enemies = []
+    enemies.each
+  end
+
+  def use_anim
+    @anim.play
+  end
+
+  def use_local
+    local = Animation.new
+    local.play
+  end
+end
+`;
+
+const TYPED_URI = "file:///test/typed.rb";
+
 // deno-lint-ignore no-explicit-any
 const labelsOf = (items: unknown[]): string[] =>
   items.map((i) => (i as any).label);
+
+// Position just after the `.` following `needle` on its line.
+const afterDot = (text: string, needle: string) => {
+  const lines = text.split("\n");
+  const line = lines.findIndex((l) => l.includes(`${needle}.`));
+  return {
+    line,
+    character: lines[line].indexOf(`${needle}.`) + needle.length + 1,
+  };
+};
 
 let ruby: Ruby;
 let root: string;
@@ -79,6 +131,17 @@ beforeAll(async () => {
     join(dir, "docs", "oss", "dragon", "geometry.rb"),
     GEOMETRY_RB,
   );
+  await Deno.writeTextFile(
+    join(dir, "docs", "oss", "dragon", "args.rb"),
+    [
+      "module GTK",
+      "  class Args",
+      "    attr_accessor :outputs",
+      "    attr_accessor :state",
+      "  end",
+      "end",
+    ].join("\n"),
+  );
   await Deno.writeTextFile(join(dir, "docs", "api", "array.md"), ARRAY_MD);
 
   const ws = new Workspace(ruby);
@@ -87,6 +150,7 @@ beforeAll(async () => {
   const engine = await EngineIndex.build(ruby, dir);
   ctx = { ws, resolver, yard, engine };
   ws.indexFile(URI, FIXTURE);
+  ws.indexFile(TYPED_URI, TYPED);
 });
 
 afterAll(async () => {
@@ -162,5 +226,39 @@ describe("completion", () => {
     assert(
       (spawn.documentation?.value ?? "").includes("Spawns enemies"),
     );
+  });
+
+  it("completes core methods on a local typed by a literal (enemies = [])", () => {
+    const items = completion(ctx, TYPED_URI, afterDot(TYPED, "enemies"));
+    const labels = labelsOf(items);
+    assert(labels.includes("each"), "expected mruby Array core");
+    assert(labels.includes("map"));
+    assert(labels.includes("map_2d"), "expected DragonRuby Array extension");
+  });
+
+  it("completes a class's own + inherited methods on an ivar (@anim.)", () => {
+    const items = completion(ctx, TYPED_URI, afterDot(TYPED, "@anim"));
+    const labels = labelsOf(items);
+    assert(labels.includes("play"));
+    assert(labels.includes("stop"));
+    assert(labels.includes("shared"), "expected inherited method from Base");
+    // Not the enclosing Sprite's own methods.
+    assert(!labels.includes("use_anim"));
+  });
+
+  it("carries a rendered doc on a typed class-method completion", () => {
+    const items = completion(ctx, TYPED_URI, afterDot(TYPED, "@anim"));
+    const play = items.find((i) =>
+      (i as { label: string }).label === "play"
+    ) as { documentation?: { value: string }; kind?: number };
+    assertEquals(play.kind, 2);
+    assert((play.documentation?.value ?? "").includes("Starts playback"));
+  });
+
+  it("completes a local typed by Klass.new (local = Animation.new)", () => {
+    const items = completion(ctx, TYPED_URI, afterDot(TYPED, "local"));
+    const labels = labelsOf(items);
+    assert(labels.includes("play"));
+    assert(labels.includes("shared"));
   });
 });

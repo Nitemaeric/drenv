@@ -1004,5 +1004,288 @@ check(
 await liveSess.close();
 await Deno.remove(live, { recursive: true }).catch(() => {});
 
+// --- P2/P3 integration: full engine index, inference-lite, new perf rules,
+// tick-reachability gating, and the drenv.toml manifest service. -------------
+
+const p23 = await Deno.makeTempDir({ prefix: "drenv-lsp-p23-" });
+await ensureDir(join(p23, "mygame", "app"));
+
+// tick → hot_path → render_sprites is the hot path; setup → bulk_labels is
+// reachable but never per-frame (softens to Hint). `def self.build`, the
+// `@return [Hud]` dispatch chain, and one-hop `enemies = []` typing exercise
+// the inference tier.
+const P23_MAIN = `def tick args
+  hot_path args
+end
+
+def hot_path args
+  render_sprites args
+end
+
+def render_sprites args
+  args.outputs.sprites << [10, 10, 32, 32, "hero.png"]
+end
+
+def setup args
+  bulk_labels args
+end
+
+def bulk_labels args
+  args.state.hud.each do |h|
+    args.outputs.labels << h
+  end
+end
+
+def audio_demo args
+  args.audio.
+end
+
+def variable_demo
+  enemies = []
+  enemies.each
+end
+
+def core_hover_demo
+  [1, 2].each
+end
+
+class Hud
+  # Draws the heads-up display.
+  def draw
+  end
+end
+
+class Sidebar
+  def draw
+  end
+end
+
+class UIManager
+  # @return [Hud] the active hud
+  def ui
+  end
+
+  def render_ui camera
+    camera.ui.draw
+  end
+end
+
+class Factory
+  # Builds a factory.
+  def self.build
+  end
+end
+
+def make
+  Factory.build
+end
+`;
+const p23MainPath = join(p23, "mygame", "app", "main.rb");
+await Deno.writeTextFile(p23MainPath, P23_MAIN);
+const p23MainUri = toFileUrl(p23MainPath).href;
+
+const p23Lines = P23_MAIN.split("\n");
+const at = (needle: string) => {
+  const line = p23Lines.findIndex((l) => l.includes(needle));
+  return { line, col: p23Lines[line]?.indexOf(needle) ?? 0 };
+};
+const endOf = (needle: string) => {
+  const line = p23Lines.findIndex((l) => l.includes(needle));
+  return { line, character: (p23Lines[line] ?? "").length };
+};
+
+const p23Sess = liveSession(p23);
+const p23Init = await p23Sess.request("initialize", {
+  processId: null,
+  rootUri: toFileUrl(p23).href,
+  capabilities: { general: { positionEncodings: ["utf-16"] } },
+});
+check(
+  "p2/p3: DragonRuby project activates",
+  !!p23Init?.capabilities?.completionProvider,
+  p23Init?.serverInfo?.version ?? "no response",
+);
+await p23Sess.notify("initialized", {});
+await p23Sess.notify("textDocument/didOpen", {
+  textDocument: {
+    uri: p23MainUri,
+    languageId: "ruby",
+    version: 1,
+    text: P23_MAIN,
+  },
+});
+await beat();
+
+// P2: the full args.* tree — `args.audio.` completes engine-derived members.
+const audioCompletion = await p23Sess.request("textDocument/completion", {
+  textDocument: { uri: p23MainUri },
+  position: endOf("args.audio."),
+});
+const audioLabels = (audioCompletion ?? []).map((c: { label: string }) =>
+  c.label
+);
+check(
+  "p2: args.audio. lists engine-derived members (volume)",
+  audioLabels.includes("volume"),
+  `${audioLabels.length} items: ${audioLabels.slice(0, 6).join(", ")}`,
+);
+
+// P2: hover on a core method resolves the literal receiver and shows engine
+// docs — `[1, 2].each` → Array#each from docs/api/array.md.
+const eachPos = at("[1, 2].each");
+const eachHover = await p23Sess.request("textDocument/hover", {
+  textDocument: { uri: p23MainUri },
+  position: {
+    line: eachPos.line,
+    character: p23Lines[eachPos.line].indexOf(".each") + 2,
+  },
+});
+const eachDoc = eachHover?.contents?.value ?? "";
+check(
+  "p2: hover on [1,2].each shows engine core-method docs (Array#each)",
+  eachDoc.includes("Array#each") && eachDoc.includes("DragonRuby"),
+  eachDoc.slice(0, 50),
+);
+
+// P3: one-hop literal typing — `enemies = []` types the variable receiver so
+// `enemies.` completes Array's core methods.
+const enemiesPos = at("enemies.each");
+const varCompletion = await p23Sess.request("textDocument/completion", {
+  textDocument: { uri: p23MainUri },
+  position: {
+    line: enemiesPos.line,
+    character: p23Lines[enemiesPos.line].indexOf("enemies.") +
+      "enemies.".length,
+  },
+});
+const varLabels = (varCompletion ?? []).map((c: { label: string }) => c.label);
+check(
+  "p3: variable receiver `enemies = []` completes Array methods",
+  varLabels.includes("each") && varLabels.includes("map"),
+  `${varLabels.length} items`,
+);
+
+// P3: @return-unique dispatch — `camera.ui.draw` types `ui` by its unique
+// `@return [Hud]`, resolving `draw` to Hud#draw (not Sidebar#draw).
+const drawPos = at("camera.ui.draw");
+const drawDef = await p23Sess.request("textDocument/definition", {
+  textDocument: { uri: p23MainUri },
+  position: {
+    line: drawPos.line,
+    character: p23Lines[drawPos.line].indexOf(".draw") + 2,
+  },
+});
+const hudDrawLine = p23Lines.findIndex((l, i) =>
+  l.includes("def draw") && p23Lines[i - 1].includes("Draws the heads-up")
+);
+check(
+  "p3: @return dispatch resolves camera.ui.draw to Hud#draw",
+  Array.isArray(drawDef) && drawDef.length === 1 &&
+    drawDef[0].uri.endsWith("main.rb") &&
+    drawDef[0].range.start.line === hudDrawLine,
+  `${drawDef?.length ?? 0} result(s) @ line ${
+    drawDef?.[0]?.range?.start?.line
+  }`,
+);
+
+// P3: singleton method — `def self.build` is indexed as Factory.build, so a
+// definition through the constant receiver resolves to the def site.
+const buildPos = at("Factory.build");
+const buildDef = await p23Sess.request("textDocument/definition", {
+  textDocument: { uri: p23MainUri },
+  position: {
+    line: buildPos.line,
+    character: p23Lines[buildPos.line].indexOf(".build") + 2,
+  },
+});
+check(
+  "p3: singleton def self.build resolves from Factory.build",
+  Array.isArray(buildDef) && buildDef.length === 1 &&
+    buildDef[0].range.start.line ===
+      p23Lines.findIndex((l) => l.includes("def self.build")),
+  `${buildDef?.length ?? 0} result(s) @ line ${
+    buildDef?.[0]?.range?.start?.line
+  }`,
+);
+
+// P3 new rule: array-primitives-should-be-hashes fires on a hot-path
+// (`tick → hot_path → render_sprites`) — Information (3).
+const p23Diags = p23Sess.diagnosticsFor(p23MainUri);
+const arrayPrim = p23Diags.find((d) => d.code === "array-primitives");
+check(
+  "p3: new perf rule (array-primitives) fires on a render layer, Information",
+  !!arrayPrim && arrayPrim.severity === 3 &&
+    (arrayPrim.codeDescription?.href ?? "").includes("rendering-primitives"),
+  arrayPrim ? `severity ${arrayPrim.severity}` : "missing",
+);
+
+// P3 reachability gate: bulk-concatenation fires in `bulk_labels`, reached only
+// from `setup` (never a tick) — softened from Information (3) to Hint (4).
+const bulkConcat = p23Diags.find((d) => d.code === "bulk-concatenation");
+check(
+  "p3: reachability downgrades a non-tick perf hint to Hint (4)",
+  !!bulkConcat && bulkConcat.severity === 4,
+  bulkConcat ? `severity ${bulkConcat.severity}` : "missing",
+);
+
+// P3 manifest service: a drenv.toml didOpen produces a validation diagnostic
+// for an unknown key (and no ruby handler touches it).
+const manifestUri = toFileUrl(join(p23, "drenv.toml")).href;
+const MANIFEST = '[package]\nroot = "app"\nbogus_key = "nope"\n';
+await p23Sess.notify("textDocument/didOpen", {
+  textDocument: {
+    uri: manifestUri,
+    languageId: "toml",
+    version: 1,
+    text: MANIFEST,
+  },
+});
+await beat();
+const manifestDiags = p23Sess.diagnosticsFor(manifestUri);
+check(
+  "p3: drenv.toml unknown key surfaces a validation diagnostic",
+  manifestDiags.some((d) =>
+    d.message.includes("bogus_key") && d.message.includes("not a known")
+  ),
+  `${manifestDiags.length} diag(s): ${
+    manifestDiags[0]?.message?.slice(0, 60) ??
+      "none"
+  }`,
+);
+
+// P3 manifest completion: dependency-table keys come from utils/manifest.
+const manifestCompletion = await p23Sess.request("textDocument/completion", {
+  textDocument: { uri: manifestUri },
+  position: { line: 0, character: 1 }, // just inside the `[` header
+});
+const manifestLabels = (manifestCompletion ?? []).map((c: { label: string }) =>
+  c.label
+);
+check(
+  "p3: drenv.toml completion offers top-level tables",
+  manifestLabels.includes("package") && manifestLabels.includes("dependencies"),
+  manifestLabels.join(", "),
+);
+
+// A sibling non-drenv .toml is ignored: no diagnostics, no completion.
+const otherTomlUri = toFileUrl(join(p23, "Cargo.toml")).href;
+await p23Sess.notify("textDocument/didOpen", {
+  textDocument: {
+    uri: otherTomlUri,
+    languageId: "toml",
+    version: 1,
+    text: "[package]\nbogus_key = 1\n",
+  },
+});
+await beat();
+check(
+  "p3: a non-drenv .toml is ignored (no diagnostics)",
+  p23Sess.diagnosticsFor(otherTomlUri).length === 0,
+  `${p23Sess.diagnosticsFor(otherTomlUri).length} diag(s)`,
+);
+
+await p23Sess.close();
+await Deno.remove(p23, { recursive: true }).catch(() => {});
+
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} FAILED`);
 Deno.exit(failures === 0 ? 0 : 1);

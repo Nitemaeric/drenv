@@ -115,6 +115,47 @@ describe("definition", () => {
     assert(!("kind" in out[0]));
   });
 
+  it("narrows a method call to the inferred receiver's class chain", () => {
+    // Two `play` defs (Animation, Player); the call on an @anim typed to
+    // Animation must resolve to Animation#play, not Player#play.
+    const src = [
+      "class Animation", // 0
+      "  def play", // 1
+      "  end", // 2
+      "end", // 3
+      "class Player", // 4
+      "  def play", // 5
+      "  end", // 6
+      "end", // 7
+      "class Scene", // 8
+      "  def setup", // 9
+      "    @anim = Animation.new", // 10
+      "  end", // 11
+      "  def tick", // 12
+      "    @anim.play", // 13
+      "  end", // 14
+      "end", // 15
+    ].join("\n");
+    const ctx = ctxOf({ "s.rb": src });
+    const out = definition(ctx, uri("s.rb"), at(src, "play", 13));
+    assertEquals(out.length, 1);
+    assertEquals(out[0].range.start.line, 1);
+  });
+
+  it("navigates to a singleton method def (def self.build)", () => {
+    const src = [
+      "class UI", // 0
+      "  def self.build", // 1
+      "  end", // 2
+      "end", // 3
+      "UI.build", // 4
+    ].join("\n");
+    const ctx = ctxOf({ "u.rb": src });
+    const out = definition(ctx, uri("u.rb"), at(src, "build", 4));
+    assertEquals(out.length, 1);
+    assertEquals(out[0].range.start.line, 1);
+  });
+
   it("returns nothing on whitespace", () => {
     const ctx = ctxOf({ "a.rb": NAV });
     assertEquals(definition(ctx, uri("a.rb"), { line: 4, character: 0 }), []);
