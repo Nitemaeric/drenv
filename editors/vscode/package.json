@@ -3,6 +3,12 @@
   "displayName": "drenv",
   "description": "DragonRuby language intelligence via the drenv language server.",
   "version": "0.1.0",
+  "publisher": "nitemaeric",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nitemaeric/drenv"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },

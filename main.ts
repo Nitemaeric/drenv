@@ -253,8 +253,10 @@ program
 
 program
   .command("lsp")
-  .description("Start the DragonRuby language server (experimental spike)")
+  .description("Start the DragonRuby language server (experimental)")
   .helpGroup(PROJECT)
+  // LSP clients pass --stdio by convention (vscode-languageclient appends it).
+  .option("--stdio", "communicate over stdio (the default and only transport)")
   .action(lsp);
 
 program

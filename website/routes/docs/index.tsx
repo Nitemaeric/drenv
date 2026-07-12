@@ -229,6 +229,29 @@ export default function Docs() {
             </p>
           </section>
 
+          {/* Editor intelligence */}
+          <section class="mb-20">
+            <div class="rounded-xl border border-rose-500/20 bg-rose-500/5 p-6">
+              <div class="mb-1 text-xs tracking-[2px] text-rose-500">
+                EXPERIMENTAL
+              </div>
+              <h2 class="text-xl font-semibold tracking-tight">
+                Editor intelligence
+              </h2>
+              <p class="mt-2 max-w-2xl text-sm text-white/70">
+                drenv ships a language server for DragonRuby projects —
+                completions, docs, diagnostics, and navigation derived from your
+                installed engine version. Zed and VS Code supported.
+              </p>
+              <a
+                href="/docs/lsp"
+                class="mt-3 inline-block text-sm underline hover:text-white/80"
+              >
+                Set up your editor →
+              </a>
+            </div>
+          </section>
+
           {/* Command reference */}
           <section>
             <h2 class="mb-6 text-2xl font-semibold tracking-tight">

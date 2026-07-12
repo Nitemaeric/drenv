@@ -597,9 +597,9 @@ type Mini = {
   close: () => Promise<void>;
 };
 
-const miniSession = (cwd: string): Mini => {
+const miniSession = (cwd: string, extraArgs: string[] = []): Mini => {
   const proc = new Deno.Command(cmd, {
-    args,
+    args: [...args, ...extraArgs],
     cwd,
     stdin: "piped",
     stdout: "piped",
@@ -762,6 +762,22 @@ check(
 );
 await monoSession.close();
 await Deno.remove(mono, { recursive: true }).catch(() => {});
+
+// LSP clients (vscode-languageclient and friends) append --stdio by
+// convention; the server must tolerate it instead of exiting on an
+// unknown option.
+const stdioSession = miniSession(tmp, ["--stdio"]);
+// deno-lint-ignore no-explicit-any
+const stdioInit: any = await stdioSession.request("initialize", {
+  processId: null,
+  rootUri: toFileUrl(tmp).href,
+  capabilities: {},
+}).catch(() => null);
+check(
+  "cli: server tolerates the conventional --stdio flag",
+  !!stdioInit?.capabilities?.completionProvider,
+);
+await stdioSession.close();
 await pump.catch(() => {});
 await Deno.remove(tmp, { recursive: true }).catch(() => {});
 
