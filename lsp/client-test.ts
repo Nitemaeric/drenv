@@ -61,6 +61,7 @@ end
 # @param args [GTK::Args] the tick args
 # @param difficulty [Integer] wave scaling factor
 # @return [Array] the spawned enemies
+# @yield [Integer] each spawned enemy id
 # @raise [ArgumentError] if difficulty is negative
 # @note Call at most once per tick. Modes:
 #   - +:loop+ repeats forever
@@ -78,8 +79,10 @@ module Fx
     # Builds a shaker.
     #
     # @param intensity [Float] initial strength
+    # @return [Shaker] the new shaker
     # @see Fx::Shaker
     def initialize intensity
+      @strength = intensity
     end
   end
 
@@ -413,7 +416,42 @@ check(
 );
 check(
   "yard: @see renders as a link when the constant is indexed",
-  initDoc.includes("_See:_ [Fx::Shaker](file://"),
+  initDoc.includes("_See:_ [`Fx::Shaker`](file://"),
+);
+check(
+  "yard: @yield renders as a Yields section",
+  yardDoc.includes("**Yields** (`Integer`) each spawned enemy id"),
+);
+check(
+  "yard: bare type resolves relative to the namespace and links",
+  initDoc.includes("**Returns** ([`Shaker`](file://"),
+);
+
+// Locals: hovering a parameter must not fall through to workspace defs.
+const strengthLine = lineOf("@strength = intensity");
+const strengthChar = MAIN.split("\n")[strengthLine].indexOf("intensity") + 2;
+// deno-lint-ignore no-explicit-any
+const localHover: any = await request("textDocument/hover", {
+  textDocument: { uri: mainUri },
+  position: { line: strengthLine, character: strengthChar },
+});
+const localDoc = localHover?.contents?.value ?? "";
+check(
+  "hover: parameter resolves locally, not to workspace defs",
+  localDoc.includes("parameter of `Fx::Shaker#initialize`") &&
+    !localDoc.includes("definitions"),
+  localDoc.slice(0, 60),
+);
+// deno-lint-ignore no-explicit-any
+const localDef: any = await request("textDocument/definition", {
+  textDocument: { uri: mainUri },
+  position: { line: strengthLine, character: strengthChar },
+});
+check(
+  "definition: parameter jumps to the def line, not other files",
+  Array.isArray(localDef) && localDef.length === 1 &&
+    localDef[0].range.start.line === lineOf("def initialize intensity"),
+  `${localDef?.length ?? 0} result(s)`,
 );
 
 const perf = diags.find((d) => d.code === "array-manipulation");

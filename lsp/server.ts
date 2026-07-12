@@ -351,37 +351,90 @@ const fileTree = new Map<string, Tree>();
 /** RDoc inline code markup (`+foo+`) → markdown backticks. */
 const inlineMd = (s: string) => s.replace(/\+([^\s+][^+]*?)\+/g, "`$1`");
 
+// Qualified class/module name -> location, rebuilt when the def index moves.
+let defsGeneration = 0;
+let nsIndexGeneration = -1;
+let nsIndex = new Map<string, Location>();
+const namespaceIndex = (): Map<string, Location> => {
+  if (nsIndexGeneration === defsGeneration) return nsIndex;
+  nsIndex = new Map();
+  for (const [name, locs] of defs) {
+    for (const loc of locs) {
+      if (loc.kind === "method" || !loc.kind) continue;
+      const qualified = loc.container ? `${loc.container}::${name}` : name;
+      if (!nsIndex.has(qualified)) nsIndex.set(qualified, loc);
+    }
+  }
+  nsIndexGeneration = defsGeneration;
+  return nsIndex;
+};
+
+/** Resolves a constant path the way Ruby/YARD would: relative to the doc's
+ * namespace first, walking outward, then top-level. */
+const resolveConst = (path: string, container: string): Location | null => {
+  const ns = namespaceIndex();
+  const parts = container ? container.split("::") : [];
+  for (let i = parts.length; i >= 0; i--) {
+    const prefix = parts.slice(0, i).join("::");
+    const hit = ns.get(prefix ? `${prefix}::${path}` : path);
+    if (hit) return hit;
+  }
+  return null;
+};
+
+const constLink = (path: string, hit: Location): string =>
+  `[\`${path}\`](${hit.uri}#L${hit.range.start.line + 1})`;
+
+/** Renders a YARD type list (`[Animation, nil]`), linking each alternative
+ * that resolves to a workspace class or module. */
+const renderType = (type: string, container: string): string =>
+  type.split(",").map((part) => {
+    const t = part.trim();
+    const hit = /^[A-Z]\w*(::[A-Z]\w*)*$/.test(t)
+      ? resolveConst(t, container)
+      : null;
+    return hit ? constLink(t, hit) : `\`${t}\``;
+  }).join(", ");
+
 /** Resolves a `@see Some::Const` reference to a markdown link when the
  * constant exists in the workspace index. */
-const seeLink = (rest: string): string => {
+const seeLink = (rest: string, container: string): string => {
   const target = rest.trim().split(/\s+/)[0] ?? "";
-  const leaf = target.split("::").pop() ?? "";
-  const hit = (defs.get(leaf) ?? []).find((c) =>
-    c.kind !== "method" &&
-    (c.container ? `${c.container}::${leaf}` : leaf).endsWith(target)
-  );
+  const hit = /^[A-Z]\w*(::[A-Z]\w*)*$/.test(target)
+    ? resolveConst(target, container)
+    : null;
   if (!hit) return `_See:_ ${inlineMd(rest)}`;
   const trailing = rest.trim().slice(target.length);
-  return `_See:_ [${target}](${hit.uri}#L${hit.range.start.line + 1})${
-    inlineMd(trailing)
-  }`;
+  return `_See:_ ${constLink(target, hit)}${inlineMd(trailing)}`;
 };
 
 const renderCache = new Map<string, string>();
 
-/** Renders a raw comment block (plain or YARD-tagged) as markdown. */
-const renderDoc = (raw: string): string => {
-  const cached = renderCache.get(raw);
+/** Renders a raw comment block (plain or YARD-tagged) as markdown. Constant
+ * references resolve relative to `container`, the doc's enclosing namespace. */
+const renderDoc = (raw: string, container = ""): string => {
+  const cacheKey = `${container} ${raw}`;
+  const cached = renderCache.get(cacheKey);
   if (cached) return cached;
 
   const intro: string[] = [];
   const params: string[] = [];
+  const yields: string[] = [];
   const raises: string[] = [];
   const extras: string[] = [];
   const examples: string[][] = [];
   let returns = "";
   let example: string[] | null = null;
   let continuation: { arr: string[]; quote: boolean } | null = null;
+
+  const typed = (rest: string): string => {
+    const r = rest.match(/^(?:\[([^\]]*)\])?\s*(.*)$/);
+    return r
+      ? `${r[1] ? `(${renderType(r[1], container)}) ` : ""}${
+        inlineMd(r[2] ?? "")
+      }`
+      : inlineMd(rest);
+  };
 
   for (const line of raw.split("\n")) {
     if (example) {
@@ -417,7 +470,7 @@ const renderDoc = (raw: string): string => {
         const p = rest.match(/^(\S+)\s*(?:\[([^\]]*)\])?\s*(.*)$/);
         if (p) {
           params.push(
-            `- \`${p[1]}\`${p[2] ? ` (\`${p[2]}\`)` : ""}${
+            `- \`${p[1]}\`${p[2] ? ` (${renderType(p[2], container)})` : ""}${
               p[3] ? ` — ${inlineMd(p[3])}` : ""
             }`,
           );
@@ -425,22 +478,31 @@ const renderDoc = (raw: string): string => {
         }
         break;
       }
-      case "return": {
-        const r = rest.match(/^(?:\[([^\]]*)\])?\s*(.*)$/);
-        returns = r
-          ? `${r[1] ? `(\`${r[1]}\`) ` : ""}${inlineMd(r[2] ?? "")}`
-          : inlineMd(rest);
+      case "return":
+        returns = typed(rest);
+        break;
+      case "yield":
+        yields.push(`**Yields** ${typed(rest)}`);
+        continuation = { arr: yields, quote: false };
+        break;
+      case "yieldparam": {
+        const p = rest.match(/^(\S+)\s*(?:\[([^\]]*)\])?\s*(.*)$/);
+        if (p) {
+          yields.push(
+            `- \`${p[1]}\`${p[2] ? ` (${renderType(p[2], container)})` : ""}${
+              p[3] ? ` — ${inlineMd(p[3])}` : ""
+            }`,
+          );
+          continuation = { arr: yields, quote: false };
+        }
         break;
       }
-      case "raise": {
-        const r = rest.match(/^(?:\[([^\]]*)\])?\s*(.*)$/);
-        raises.push(
-          r
-            ? `${r[1] ? `(\`${r[1]}\`) ` : ""}${inlineMd(r[2] ?? "")}`
-            : inlineMd(rest),
-        );
+      case "yieldreturn":
+        yields.push(`**Yield returns** ${typed(rest)}`);
         break;
-      }
+      case "raise":
+        raises.push(typed(rest));
+        break;
       case "note":
         extras.push(`> **Note:** ${inlineMd(rest)}`);
         continuation = { arr: extras, quote: true };
@@ -450,7 +512,7 @@ const renderDoc = (raw: string): string => {
         continuation = { arr: extras, quote: true };
         break;
       case "see":
-        extras.push(seeLink(rest));
+        extras.push(seeLink(rest, container));
         break;
       default:
         extras.push(`_@${name}_ ${inlineMd(rest)}`);
@@ -460,6 +522,7 @@ const renderDoc = (raw: string): string => {
   const sections = [intro.join("\n").trim()];
   if (params.length) sections.push(`**Parameters**\n${params.join("\n")}`);
   if (returns) sections.push(`**Returns** ${returns}`);
+  if (yields.length) sections.push(yields.join("\n"));
   if (raises.length) {
     sections.push(raises.map((r) => `**Raises** ${r}`).join("\n\n"));
   }
@@ -469,7 +532,7 @@ const renderDoc = (raw: string): string => {
     if (body) sections.push("```ruby\n" + body + "\n```");
   }
   const out = sections.filter((s) => s.length > 0).join("\n\n");
-  renderCache.set(raw, out);
+  renderCache.set(cacheKey, out);
   return out;
 };
 
@@ -479,6 +542,7 @@ const nodeRange = (node: Node) => ({
 });
 
 const indexFile = (uri: string, text: string) => {
+  defsGeneration++;
   fileText.set(uri, text);
   const tree = parser.parse(text)!;
   fileTree.set(uri, tree);
@@ -1036,11 +1100,17 @@ const completions = (uri: string, pos: Pos): unknown[] => {
   // when unambiguous (same-named defs can document different things).
   const items: unknown[] = [...defs.entries()].map(([name, locs]) => {
     const docs = [...new Set(locs.map((l) => l.doc).filter(Boolean))];
+    const documented = locs.find((l) => l.doc);
     return {
       label: name,
       kind: 3, // Function
       ...(docs.length === 1
-        ? { documentation: { kind: "markdown", value: renderDoc(docs[0]!) } }
+        ? {
+          documentation: {
+            kind: "markdown",
+            value: renderDoc(docs[0]!, documented?.container ?? ""),
+          },
+        }
         : {}),
     };
   });
@@ -1048,6 +1118,89 @@ const completions = (uri: string, pos: Pos): unknown[] => {
     if (api.has(mod)) items.push({ label: mod, kind: 9 }); // Module
   }
   return items;
+};
+
+// --- local variable / parameter resolution -----------------------------------
+
+const enclosingNamespace = (n: Node): string => {
+  const parts: string[] = [];
+  for (let p = n.parent; p; p = p.parent) {
+    if (p.type === "class" || p.type === "module") {
+      const name = p.childForFieldName("name")?.text;
+      if (name) parts.unshift(name);
+    }
+  }
+  return parts.join("::");
+};
+
+type LocalHit = { role: string; node: Node; methodLabel: string };
+
+/** When the identifier at `pos` is a parameter, block parameter, or local
+ * variable of its enclosing method, workspace-wide name matches are noise —
+ * resolve it locally instead. */
+const resolveLocal = (uri: string, pos: Pos, word: string): LocalHit | null => {
+  const tree = fileTree.get(uri);
+  if (!tree) return null;
+  const node = tree.rootNode.descendantForPosition({
+    row: pos.line,
+    column: pos.character,
+  });
+  if (!node || node.type !== "identifier" || node.text !== word) return null;
+  if (
+    node.parent?.type === "call" &&
+    node.parent.childForFieldName("method")?.id === node.id
+  ) {
+    return null;
+  }
+
+  let method: Node | null = null;
+  for (let p = node.parent; p; p = p.parent) {
+    if (p.type === "method" || p.type === "singleton_method") {
+      method = p;
+      break;
+    }
+  }
+  if (!method) return null;
+
+  const methodName = method.childForFieldName("name")?.text ?? "?";
+  const ns = enclosingNamespace(method);
+  const methodLabel = ns ? `${ns}#${methodName}` : methodName;
+  const nameOf = (child: Node): Node | null =>
+    child.type === "identifier" ? child : child.childForFieldName("name");
+
+  const params = method.childForFieldName("parameters");
+  if (params) {
+    for (let i = 0; i < params.namedChildCount; i++) {
+      const name = nameOf(params.namedChild(i)!);
+      if (name?.text === word) {
+        return { role: "parameter", node: name, methodLabel };
+      }
+    }
+  }
+
+  let hit: LocalHit | null = null;
+  const scan = (n: Node) => {
+    if (hit) return;
+    if (n.type === "block_parameters") {
+      for (let i = 0; i < n.namedChildCount; i++) {
+        const name = nameOf(n.namedChild(i)!);
+        if (name?.text === word) {
+          hit = { role: "block parameter", node: name, methodLabel };
+          return;
+        }
+      }
+    }
+    if (n.type === "assignment") {
+      const left = n.childForFieldName("left");
+      if (left?.type === "identifier" && left.text === word) {
+        hit = { role: "local variable", node: left, methodLabel };
+        return;
+      }
+    }
+    for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
+  };
+  scan(method);
+  return hit;
 };
 
 const wordAt = (uri: string, pos: Pos): string | null => {
@@ -1078,6 +1231,14 @@ const hover = (uri: string, pos: Pos): unknown => {
     }
   }
 
+  const md = (value: string) => ({ contents: { kind: "markdown", value } });
+
+  // Parameter or local variable of the enclosing method?
+  const local = resolveLocal(uri, pos, word);
+  if (local) {
+    return md(`**${word}** — ${local.role} of \`${local.methodLabel}\``);
+  }
+
   // Workspace definition?
   const found = defs.get(word);
   if (found?.length) {
@@ -1086,7 +1247,6 @@ const hover = (uri: string, pos: Pos): unknown => {
       f.container
         ? `${f.container}${f.kind === "method" ? "#" : "::"}${word}`
         : word;
-    const md = (value: string) => ({ contents: { kind: "markdown", value } });
 
     // Hovering the def itself pins down exactly which one it is.
     const at = found.find((f) =>
@@ -1097,7 +1257,7 @@ const hover = (uri: string, pos: Pos): unknown => {
     if (at) {
       return md(
         `**${qualified(at)}** — defined in ${rel(at.uri)}` +
-          (at.doc ? `\n\n---\n\n${renderDoc(at.doc)}` : ""),
+          (at.doc ? `\n\n---\n\n${renderDoc(at.doc, at.container ?? "")}` : ""),
       );
     }
 
@@ -1107,10 +1267,13 @@ const hover = (uri: string, pos: Pos): unknown => {
       const files = [...new Set(found.map((f) => rel(f.uri)))];
       const where = files.slice(0, 3).join(", ") +
         (files.length > 3 ? ` (+${files.length - 3} more)` : "");
+      const documented = found.find((f) => f.doc);
       const docs = [...new Set(found.map((f) => f.doc).filter(Boolean))];
       return md(
         `**${names[0]}** — defined in ${where}` +
-          (docs.length === 1 ? `\n\n---\n\n${renderDoc(docs[0]!)}` : ""),
+          (docs.length === 1
+            ? `\n\n---\n\n${renderDoc(docs[0]!, documented?.container ?? "")}`
+            : ""),
       );
     }
 
@@ -1131,6 +1294,8 @@ const hover = (uri: string, pos: Pos): unknown => {
 const definition = (uri: string, pos: Pos): unknown[] => {
   const word = wordAt(uri, pos);
   if (!word) return [];
+  const local = resolveLocal(uri, pos, word);
+  if (local) return [{ uri, range: nodeRange(local.node) }];
   return (defs.get(word) ?? []).map(({ uri, range }) => ({ uri, range }));
 };
 
@@ -1138,11 +1303,32 @@ const references = (uri: string, pos: Pos): Location[] => {
   const word = wordAt(uri, pos);
   if (!word) return [];
 
+  // A local's references live inside its method, not across the workspace.
+  const local = resolveLocal(uri, pos, word);
+  let scope: { uri: string; from: number; to: number } | null = null;
+  if (local) {
+    let method: Node | null = local.node;
+    while (
+      method && method.type !== "method" && method.type !== "singleton_method"
+    ) {
+      method = method.parent;
+    }
+    if (method) {
+      scope = {
+        uri,
+        from: method.startPosition.row,
+        to: method.endPosition.row,
+      };
+    }
+  }
+
   const out: Location[] = [];
   const pattern = new RegExp(`\\b${word.replace(/[?!]/g, "\\$&")}\\b`, "g");
   for (const [fileUri, text] of fileText) {
+    if (scope && fileUri !== scope.uri) continue;
     const lines = text.split("\n");
     for (let line = 0; line < lines.length; line++) {
+      if (scope && (line < scope.from || line > scope.to)) continue;
       for (const match of lines[line].matchAll(pattern)) {
         out.push({
           uri: fileUri,
