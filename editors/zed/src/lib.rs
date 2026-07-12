@@ -12,11 +12,8 @@ impl zed::Extension for DrenvExtension {
         _language_server_id: &zed::LanguageServerId,
         worktree: &zed::Worktree,
     ) -> Result<zed::Command> {
-        // Prefer the spike binary while it exists; fall back to drenv itself
-        // once `drenv lsp` ships in the main binary.
         let command = worktree
-            .which("drenv-lsp-spike")
-            .or_else(|| worktree.which("drenv"))
+            .which("drenv")
             .ok_or("drenv not found on PATH (is ~/.drenv/bin on your PATH?)")?;
 
         Ok(zed::Command {

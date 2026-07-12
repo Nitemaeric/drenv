@@ -15,6 +15,13 @@
   "categories": [
     "Programming Languages"
   ],
+  "keywords": [
+    "dragonruby",
+    "ruby",
+    "lsp",
+    "gamedev"
+  ],
+  "icon": "icon.png",
   "activationEvents": [
     "onLanguage:ruby",
     "onLanguage:toml"
