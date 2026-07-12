@@ -1,39 +1,205 @@
 import { Head } from "$fresh/runtime.ts";
+import type { ComponentChildren } from "preact";
 import Nav from "../../components/Nav.tsx";
 import Footer from "../../components/Footer.tsx";
 
-type Feature = { title: string; desc: string };
+function Editor(
+  { file, children }: { file: string; children: ComponentChildren },
+) {
+  return (
+    <div class="overflow-hidden rounded-xl border border-white/10 bg-black shadow-2xl shadow-black/50">
+      <div class="flex items-center gap-1.5 border-b border-white/10 bg-zinc-900/80 px-4 py-2.5">
+        <span class="h-2.5 w-2.5 rounded-full bg-white/15" />
+        <span class="h-2.5 w-2.5 rounded-full bg-white/15" />
+        <span class="h-2.5 w-2.5 rounded-full bg-white/15" />
+        <span class="ml-2 font-mono text-xs text-white/40">{file}</span>
+      </div>
+      <div class="overflow-x-auto p-4 font-mono text-[13px] leading-6">
+        {children}
+      </div>
+    </div>
+  );
+}
 
-const FEATURES: Feature[] = [
+const Caret = () => (
+  <span class="ml-px inline-block h-[15px] w-[2px] translate-y-[2px] animate-pulse bg-rose-400" />
+);
+
+const Wavy = (
+  { children, color = "#fbbf24" }: {
+    children: ComponentChildren;
+    color?: string;
+  },
+) => (
+  <span
+    style={`text-decoration: underline wavy ${color}; text-decoration-thickness: 1px; text-underline-offset: 4px;`}
+  >
+    {children}
+  </span>
+);
+
+type Item = { label: string; detail: string; selected?: boolean };
+const COMPLETION_ITEMS: Item[] = [
+  { label: "each", detail: "mruby core" },
+  { label: "filter_map", detail: "Array — DragonRuby 7.13", selected: true },
+  { label: "map_2d", detail: "Array — DragonRuby 7.13" },
+  { label: "product", detail: "Array — DragonRuby 7.13" },
+  { label: "reject", detail: "mruby core" },
+];
+
+function CompletionMock() {
+  return (
+    <Editor file="mygame/app/main.rb">
+      <div>
+        <span class="text-zinc-500">
+          # the server knows enemies is an Array
+        </span>
+      </div>
+      <div>
+        <span class="text-zinc-100">enemies = []</span>
+      </div>
+      <div>
+        <span class="text-zinc-100">enemies.fi</span>
+        <Caret />
+      </div>
+      <div class="mt-1 w-72 max-w-full overflow-hidden rounded-lg border border-white/15 bg-zinc-900 shadow-xl">
+        {COMPLETION_ITEMS.map((item) => (
+          <div
+            class={`flex items-center gap-2 px-3 py-1 ${
+              item.selected ? "bg-rose-500/20" : ""
+            }`}
+          >
+            <span class="flex h-4 w-4 items-center justify-center rounded bg-sky-500/20 text-[10px] text-sky-300">
+              ƒ
+            </span>
+            <span class="text-zinc-100">{item.label}</span>
+            <span class="ml-auto whitespace-nowrap text-[11px] text-white/35">
+              {item.detail}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Editor>
+  );
+}
+
+function HoverMock() {
+  return (
+    <Editor file="mygame/app/main.rb">
+      <div class="mb-1 w-80 max-w-full rounded-lg border border-white/15 bg-zinc-900 p-3 text-[12px] leading-5 shadow-xl">
+        <div>
+          <span class="font-semibold text-zinc-100">Geometry.distance</span>
+          <span class="text-white/45">{" — DragonRuby 7.13"}</span>
+        </div>
+        <div class="my-2 border-t border-white/10" />
+        <div class="text-white/70">
+          Returns the distance between two points.
+        </div>
+        <div class="mt-2 rounded bg-black px-2 py-1 text-emerald-300">
+          distance(point_one, point_two)
+        </div>
+      </div>
+      <div>
+        <span class="text-zinc-100">dist ={" "}</span>
+        <span class="text-rose-400">Geometry</span>
+        <span class="text-zinc-100">.</span>
+        <span class="rounded bg-white/10 px-0.5 text-sky-300">distance</span>
+        <span class="text-zinc-100">({"{"} x: 0, y: 0 {"}"}, player)</span>
+      </div>
+    </Editor>
+  );
+}
+
+function SignatureMock() {
+  return (
+    <Editor file="mygame/app/main.rb">
+      <div class="mb-1 w-80 max-w-full rounded-lg border border-white/15 bg-zinc-900 p-3 text-[12px] leading-5 shadow-xl">
+        <div class="text-zinc-100">
+          rotate_point(point,{" "}
+          <span class="rounded bg-rose-500/25 px-1 font-semibold text-rose-300">
+            angle
+          </span>, around = nil)
+        </div>
+        <div class="mt-1 text-white/55">
+          angle — degrees to rotate point around
+        </div>
+      </div>
+      <div>
+        <span class="text-rose-400">Geometry</span>
+        <span class="text-zinc-100">.</span>
+        <span class="text-sky-300">rotate_point</span>
+        <span class="text-zinc-100">({"{"} x: 0, y: 0 {"}"}, 90</span>
+        <Caret />
+      </div>
+    </Editor>
+  );
+}
+
+function DiagnosticsMock() {
+  return (
+    <Editor file="mygame/app/main.rb">
+      <div>
+        <span class="text-rose-400">Geometry</span>
+        <span class="text-zinc-100">.</span>
+        <Wavy>
+          <span class="text-sky-300">nope</span>
+        </Wavy>
+        <span class="text-zinc-100">(args)</span>
+      </div>
+      <div>
+        <span class="text-rose-400">Geometry</span>
+        <span class="text-zinc-100">.</span>
+        <span class="text-sky-300">rect_navigate</span>
+        <span class="text-zinc-100">{" "}</span>
+        <Wavy>
+          <span class="text-zinc-100">rec:</span>
+        </Wavy>
+        <span class="text-zinc-100">{" {}"}</span>
+      </div>
+      <div class="mt-2 w-96 max-w-full rounded-lg border border-amber-400/30 bg-zinc-900 p-3 text-[12px] leading-5 shadow-xl">
+        <div class="text-white/80">
+          <span class="text-amber-300">⚠</span>{" "}
+          <code class="text-rose-400">rec:</code>{" "}
+          is not a keyword of Geometry.rect_navigate — accepted:{" "}
+          <code class="text-rose-400">rect:</code>,{" "}
+          <code class="text-rose-400">rects:</code>
+        </div>
+        <div class="mt-1 text-white/40">drenv (DragonRuby 7.13)</div>
+      </div>
+    </Editor>
+  );
+}
+
+type Showcase = {
+  title: string;
+  desc: string;
+  mock: () => ComponentChildren;
+};
+
+const SHOWCASES: Showcase[] = [
   {
     title: "Completions",
     desc:
-      "The full args.* tree, Geometry and Easing, mruby core methods on literal receivers, your project's and vendored libraries' definitions — plus one-hop typed variables: enemies = [] makes enemies. complete Array.",
+      "The full args.* tree, Geometry and Easing, mruby core methods, and your project's own definitions — vendored libraries included. One-hop typing means enemies = [] makes enemies. complete like an Array, and @anim = Animation.new completes your class's methods, inherited ones too.",
+    mock: CompletionMock,
   },
   {
     title: "Docs on hover",
     desc:
-      "The same content docs.dragonruby.org serves, matched to your installed engine version. Your own comment blocks render too — YARD tags become rich markdown with clickable constant links.",
+      "The same content docs.dragonruby.org serves, matched to the engine version your project actually uses. Your own comment blocks render too — YARD tags become rich markdown with clickable constant links.",
+    mock: HoverMock,
   },
   {
     title: "Signature help",
     desc:
-      "Positional and keyword parameters with the active argument highlighted, including DragonRuby's paren-less call style.",
-  },
-  {
-    title: "Navigation",
-    desc:
-      "Go to definition and references across mygame/ and vendor/, resolved the way Ruby dispatches: own class, superclass chain, then same file. Locals stay method-scoped.",
+      "Positional and keyword parameters with the active argument highlighted as you type — including DragonRuby's paren-less call style. Signatures come from the engine's own source.",
+    mock: SignatureMock,
   },
   {
     title: "Diagnostics",
     desc:
-      "Syntax errors, unknown engine methods, wrong argument counts, unknown or missing keywords, duck-shape checks derived from the engine's own source — and performance hints linked to the shipped performance guide.",
-  },
-  {
-    title: "drenv.toml",
-    desc:
-      "Validation and key completion for the dependency manifest, from the same schema the CLI uses.",
+      "Unknown engine methods, wrong argument counts, unknown or missing keywords, duck-shape checks, and performance hints linked to the engine's shipped guide. Warnings only fire when the server fully owns the receiver — a squiggle means something is actually wrong.",
+    mock: DiagnosticsMock,
   },
 ];
 
@@ -60,25 +226,38 @@ export default function LspDocs() {
             your vendored dependencies.
           </p>
 
-          <section class="mt-12 grid gap-4 sm:grid-cols-2">
-            {FEATURES.map((f) => (
-              <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
-                <div class="font-semibold">{f.title}</div>
-                <p class="mt-2 text-sm leading-snug text-white/70">{f.desc}</p>
-              </div>
+          <div class="mt-16 space-y-16">
+            {SHOWCASES.map((s) => (
+              <section class="grid items-center gap-8 md:grid-cols-[1fr_1.2fr]">
+                <div>
+                  <h2 class="text-2xl font-semibold tracking-tight">
+                    {s.title}
+                  </h2>
+                  <p class="mt-3 text-sm leading-relaxed text-white/70">
+                    {s.desc}
+                  </p>
+                </div>
+                {s.mock()}
+              </section>
             ))}
-          </section>
+          </div>
 
-          <section class="mt-16">
-            <h2 class="mb-2 text-2xl font-semibold tracking-tight">
-              Honest squiggles
-            </h2>
-            <p class="max-w-2xl text-white/70">
-              Completions are generous; warnings are certain. A diagnostic only
-              fires when the server fully owns the receiver and the arguments
-              are statically known — so a squiggle in a DragonRuby project means
-              something is actually wrong.
-            </p>
+          <section class="mt-16 grid gap-4 sm:grid-cols-2">
+            <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
+              <div class="font-semibold">Navigation</div>
+              <p class="mt-2 text-sm leading-snug text-white/70">
+                Go to definition and references across mygame/ and vendor/,
+                resolved the way Ruby dispatches: own class, superclass chain,
+                then same file. Locals stay method-scoped.
+              </p>
+            </div>
+            <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
+              <div class="font-semibold">drenv.toml</div>
+              <p class="mt-2 text-sm leading-snug text-white/70">
+                Validation and key completion for the dependency manifest, from
+                the same schema the CLI uses.
+              </p>
+            </div>
           </section>
 
           <section class="mt-16">
