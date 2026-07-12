@@ -44,7 +44,10 @@ export function activate(_context: vscode.ExtensionContext): void {
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: "file", language: "ruby" }],
+    documentSelector: [
+      { scheme: "file", language: "ruby" },
+      { scheme: "file", language: "toml" },
+    ],
   };
 
   client = new LanguageClient(

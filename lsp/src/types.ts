@@ -8,6 +8,7 @@ export type Def = Loc & {
   kind?: "method" | "class" | "module";
   doc?: string; // raw comment block, rendered lazily
   superclass?: string; // as written at the class site
+  singleton?: boolean; // P3: `def self.x` — display `Class.x`, not `Class#x`
 };
 
 export type Param = {

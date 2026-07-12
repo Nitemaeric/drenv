@@ -269,6 +269,105 @@ describe("diagnostics — duck shape", () => {
   });
 });
 
+describe("diagnostics — one-hop literal shape check", () => {
+  it("resolves an identifier to its same-method literal hash and flags it", () => {
+    const diags = run(
+      engine,
+      "def go\n  p = { x: 0 }\n  Geometry.intersect_rect?(p, q)\nend\n",
+    );
+    assert(
+      has(diags, "argument 1 (`rect_one`) is missing `.h`, `.w`"),
+      messages(diags).join(" | "),
+    );
+  });
+
+  it("stays silent when the literal is reassigned (uncertain type)", () => {
+    const diags = run(
+      engine,
+      "def go\n  p = { x: 0 }\n  p = other\n  " +
+        "Geometry.intersect_rect?(p, q)\nend\n",
+    );
+    assertEquals(messages(diags), []);
+  });
+
+  it("stays silent when the local is element-mutated before use", () => {
+    const diags = run(
+      engine,
+      "def go\n  p = { x: 0 }\n  p[:w] = 1\n  " +
+        "Geometry.intersect_rect?(p, q)\nend\n",
+    );
+    assertEquals(messages(diags), []);
+  });
+
+  it("stays silent when the literal is not a hash", () => {
+    const diags = run(
+      engine,
+      "def go\n  p = [1, 2]\n  Geometry.intersect_rect?(p, q)\nend\n",
+    );
+    assertEquals(messages(diags), []);
+  });
+
+  it("resolves an identifier keyword value through one hop", () => {
+    const diags = run(
+      engine,
+      "def go\n  a = { x: 1 }\n  Geometry.place(t, at: a)\nend\n",
+    );
+    assert(
+      has(diags, "keyword `at:` (`at`) is missing `.y`"),
+      messages(diags).join(" | "),
+    );
+  });
+});
+
+describe("diagnostics — new perf rules", () => {
+  it("flags an array primitive pushed to a render layer", () => {
+    const diags = run(engine, "args.outputs.sprites << [1, 2]\n");
+    const d = diags.find((x) => x.code === "array-primitives");
+    assert(d, messages(diags).join(" | "));
+    assertEquals(d.severity, 3);
+    assert((d.codeDescription?.href ?? "").includes("rendering-primitives"));
+  });
+
+  it("does not flag a hash pushed to a render layer", () => {
+    const diags = run(engine, "args.outputs.sprites << { x: 1 }\n");
+    assert(!diags.some((d) => d.code === "array-primitives"));
+  });
+
+  it("keeps a hint at Information in a method with no known callers", () => {
+    // `orphan` is never called → in-degree 0 → cannot prove cold → Information.
+    const diags = run(
+      engine,
+      "def orphan\n  xs.map { |x| x }\n  y = 1\nend\n",
+    );
+    const d = diags.find((x) => x.code === "unused-map");
+    assert(d, messages(diags).join(" | "));
+    assertEquals(d.severity, 3);
+  });
+
+  it("softens a hint to Hint when the method has a caller but no tick path", () => {
+    // `helper` is called by `side` (in-degree > 0) but no tick reaches it.
+    const src = [
+      "def side\n  helper\nend",
+      "def helper\n  xs.map { |x| x }\n  y = 1\nend",
+    ].join("\n\n") + "\n";
+    const diags = run(engine, src);
+    const d = diags.find((x) => x.code === "unused-map");
+    assert(d, messages(diags).join(" | "));
+    assertEquals(d.severity, 4);
+  });
+
+  it("keeps a hint at Information on a tick-reachable method", () => {
+    const src = [
+      "def tick args\n  recurse 1\nend",
+      "def recurse n\n  recurse(n - 1)\nend",
+    ].join("\n\n") + "\n";
+    const diags = run(engine, src);
+    const d = diags.find((x) => x.code === "recursion");
+    assert(d, messages(diags).join(" | "));
+    assertEquals(d.severity, 3);
+  });
+});
+
 describe("diagnostics — mutation during iteration (perf hint)", () => {
   const SRC = "list.each do |item|\n  list.delete(item)\nend\n";
 

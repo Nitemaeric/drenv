@@ -6,9 +6,11 @@
 > self-contained: it captures what the spike proved, the architecture, the
 > design principles, and the phased path to production.
 
-Status: **spike complete, validated** (branch `spike/lsp`, ~1,800-line server,
-42 scripted client checks passing against the compiled binary, field-tested in
-Zed via a dev extension against the conjuration monorepo). Owner: Nitemaeric.
+Status: **P1–P3 complete, validated** (branch `feat/lsp`). The ~1,800-line spike
+server is modularized into `lsp/src/*` (P1) with the full engine index (P2) and
+inference-lite + new perf rules + the `drenv.toml` service (P3) landed. 60
+scripted client checks pass over stdio; field-tested in Zed via a dev extension
+against the conjuration monorepo. Owner: Nitemaeric.
 
 ---
 
@@ -157,41 +159,73 @@ Files: `lsp/server.ts` (server), `lsp/client-test.ts` (scripted protocol client
 
 ### P2 — Full engine index (remove the curated pieces)
 
-- Generate the complete `args.*` tree (the spike hardcodes ~4 chains) from
-  `docs/api/*.md` headings + the OSS runtime source; include `args.audio`,
-  `args.grid`, `args.gtk`, `args.events`, mouse/touch, etc.
-- mruby core index generated from mruby source at the engine's mruby version
-  (the engine ships `docs/oss/mruby/dragonruby-mruby-*.patch`), replacing the
-  curated CORE_METHODS tables. Includes DragonRuby's core-class extensions
-  parsed from the engine (`docs/oss/dragon/*_docs.rb`, runtime files).
-- Hover for core/class methods (currently completions-only).
-- Signatures for doc-only (C-implemented) methods where the docs' code fences
-  make them unambiguous.
+- [done] Generate the complete `args.*` tree from `docs/api/*.md` heading chain
+  annotations + the OSS runtime source (`args.rb` accessors/aliases for the
+  single-hop `args.` members). Nested chains (`args.inputs.mouse`,
+  `args.inputs.keyboard`, controller/key variadics) are their own `api` entries;
+  `args.audio` now completes engine-derived members. Behavior lock:
+  `args.audio.` → `volume`, …
+- [done] mruby core index — **the one documented exception to
+  engine-derivation.** The engine ships only
+  `docs/oss/mruby/dragonruby-mruby-*.patch` — _diffs_ against upstream mruby
+  3.0.0 (`git checkout 3.0.0` per the readme), and across all 9 patches they add
+  just 5 `mrb_define_method` calls (rand/srand on Kernel,
+  Random#initialize/rand/srand). The full mruby core method tables
+  (`each`/`map`/`reduce`/…) live in unshipped upstream mruby, so plain-mruby
+  core **cannot** be engine-derived. `engine/core.ts` keeps a curated
+  `CORE_BASELINE` constant (the spike's `CORE_METHODS`, renamed) for
+  plain-mruby-3.0.0 core, comment-marked as this exception, and layers
+  engine-derived DragonRuby core-class extensions on top: `docs/api/*.md`
+  headings (instance) + `Array Class Methods` bullet lists (constant receiver),
+  cross-checked against `docs/oss/dragon/*_docs.rb`. Core classes get richer
+  completion/hover but never diagnostics (not in `validityReceivers`). The cache
+  gains `CACHE_SCHEMA_VERSION` so a same-drenv-version change to derivation
+  logic or baseline content invalidates a stale dev cache.
+- [done] Hover for core/class methods — the hover handler resolves the literal
+  receiver via `literalClass` and reads `methodDocs(cls)`. Behavior lock:
+  `[1, 2].each` → `Array#each` engine docs.
+- [done] Signatures for doc-only (C-implemented) methods, synthesized in
+  `engine/md.ts` **only when unambiguous** (a single `def` fence or a single
+  consistent call form); ambiguous fences stay silent (principle 2) so
+  diagnostics never fire on a guessed arity.
 
 ### P3 — Inference-lite + more rules
 
-- **One-hop assignment tracking**: `enemies = []` → Array. Powers
-  variable-receiver completions AND extends shape/arity checks to one-hop
-  literal variables. Explicitly stop at one hop.
-- **YARD types as an inference input**: rendering already resolves types to
-  workspace classes; the next tier is _dispatching_ through them. The motivating
-  case (from field-testing): `camera.ui.view` — trace `ui` to
-  `Conjuration::UIManagement#ui`, read its `@return [UI]`, resolve `view`
-  against `UI`'s methods. One hop of return-type dispatch covers most
-  framework-style chains, plus workspace shape/arity checks and method-chain
-  completion (`@anim = Animation.new` → `@anim.` completes the class's methods),
-  all on the existing container-aware def index.
-- Index singleton methods (`def self.build`) as class-level defs (`UI.build`) —
-  currently absent from the workspace index, so class-method
-  hover/definition/references miss.
-- Tick-reachability gating for perf rules (workspace call graph from the def
-  index), so per-frame hints only fire where they're hot.
-- Additional guide rules (each certainty-gated, Information severity):
-  array-primitives-should-be-hashes on `args.outputs.* << [...]`; bulk
-  concatenation (`outputs << x` inside `.each`); recursion notice; unused `.map`
-  (conservative: non-final statement only).
-- `drenv.toml` language service (completion/validation — drenv owns the schema;
-  reuse `parseManifest` validation).
+- [done] **One-hop assignment tracking**: `enemies = []` → Array powers
+  variable-receiver completion; `sameMethodLiteral` (unreassigned/unmutated,
+  element-assignment- and mutator-guarded) extends the duck-shape check to
+  one-hop literal variables. Diagnostics use `source: "literal"` only — never
+  `new`/`ivar`/`return`. Stops at one hop.
+- [done] **YARD types as an inference input**: `receiverType` rule 4 dispatches
+  `recv.meth` through `meth`'s unique `@return [T]` (one hop, not re-fed).
+  Behavior lock: `camera.ui.draw` resolves to `Hud#draw` via `#ui`'s
+  `@return [Hud]`. Also powers `@anim = Klass.new` → `@anim.` method-chain
+  completion. Inference-side extension for receivers is gated out of diagnostics
+  (engine receivers are constants, not locals) — inert but stated generically.
+- [done] Index singleton methods (`def self.build`, object=`self` only) as
+  class-level defs displayed `Class.build`; `def SomeConst.x` skipped for
+  certainty. Behavior lock: definition through `Factory.build` resolves to the
+  `def self.build` site.
+- [done] Tick-reachability gating for the new perf rules — a name-keyed call
+  graph (`perf.ts`) from `tick` roots. Deliberately over-links (name-level) to
+  keep more hints at Information; softens a firing to Hint (4) only when the
+  method is provably invoked but not tick-reachable. The pre-existing
+  `mutationDuringIteration` rule stays Information (3) by contract (fx_demo
+  lock), so the downgrade is demonstrated on a gated rule. Behavior lock:
+  bulk-concatenation in a non-tick-reached method → severity 4.
+- [done] Additional guide rules (each certainty-gated, Information base
+  severity): array-primitives-should-be-hashes on
+  `args.outputs.<layer> << [...]` (render layers only,
+  `background_color`/`screenshots` excluded); bulk concatenation inside an
+  iteration block; recursion notice (bare-identifier self-call, shadow-guarded);
+  unused non-final `.map` (structural statement position). Behavior lock:
+  array-primitives fires on a hot path at Information.
+- [done] `drenv.toml` language service (`handlers/manifest.ts`) — validation +
+  section/key completion over raw text, keys derived from `utils/manifest`
+  `SOURCE_KINDS`/`DependencySpec`/`PackageSpec`. `server.ts` routes on
+  `basename === "drenv.toml"`; every other `.toml` is ignored, and toml never
+  enters the ruby index. Behavior lock: unknown-key diagnostic, top-level
+  completion, and a non-drenv `.toml` producing nothing.
 
 ### P4 — Distribution & setup UX
 
@@ -235,10 +269,10 @@ Files: `lsp/server.ts` (server), `lsp/client-test.ts` (scripted protocol client
 
 ## Evidence
 
-- Branch: `spike/lsp` — server, client tests, Zed extension, this plan.
-- 42/42 scripted checks against the compiled binary
-  (`deno run -A
-  lsp/client-test.ts ~/.drenv/bin/drenv-lsp-spike lsp`).
+- Branch: `feat/lsp` — modular server (`lsp/src/*`), client tests, Zed + VS Code
+  extensions, this plan.
+- 60/60 scripted checks
+  (`deno run -A lsp/client-test.ts deno run -A main.ts lsp`).
 - Binary cost: +~2.2 MB WASM (74 MB total). Parse: ~7 ms/file. Engine index
   build: sub-second (uncached).
 - Field-tested in Zed (dev extension `editors/zed/`, demo project

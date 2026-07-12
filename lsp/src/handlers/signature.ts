@@ -23,11 +23,17 @@ export const signatureHelp = (ctx: Ctx, uri: string, pos: Pos): unknown => {
   while (node && node.type !== "call") node = node.parent;
   if (!node) return null;
 
-  const receiver = node.childForFieldName("receiver")?.text;
+  const receiverNode = node.childForFieldName("receiver");
+  const receiver = receiverNode?.text;
   const method = node.childForFieldName("method")?.text;
   if (!receiver || !method) return null;
 
-  const entry = entryFor(ctx, receiver, method);
+  // Direct engine receiver (Geometry, args.*, …), else one-hop typed variable.
+  let entry = entryFor(ctx, receiver, method);
+  if (!entry && receiverNode) {
+    const cls = ctx.resolver.receiverType(uri, receiverNode)?.class;
+    if (cls) entry = entryFor(ctx, cls, method);
+  }
   if (!entry?.params?.length) return null;
 
   // Active parameter: how many arguments end before the cursor.

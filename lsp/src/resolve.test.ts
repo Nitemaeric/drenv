@@ -1,9 +1,10 @@
 import { beforeAll, describe, it } from "@std/testing/bdd";
 import { assert, assertEquals } from "@std/assert";
 
-import { Ruby } from "./ruby.ts";
+import { type Node, Ruby } from "./ruby.ts";
 import { Workspace } from "./workspace.ts";
 import { Resolver } from "./resolve.ts";
+import type { Def } from "./types.ts";
 
 let ruby: Ruby;
 beforeAll(async () => {
@@ -229,5 +230,420 @@ describe("Resolver.contextCandidates", () => {
       resolver.contextCandidates(a, { line: 0, character: 0 }, found),
       null,
     );
+  });
+});
+
+// Identity lookup: methodsOf returns the same Def objects stored in the index.
+const nameOfDef = (ws: Workspace, def: Def) => {
+  for (const [name, locs] of ws.defs) if (locs.includes(def)) return name;
+  return null;
+};
+
+// First call whose method name is `method`, returning its receiver node.
+const receiverOf = (ws: Workspace, u: string, method: string): Node => {
+  let found: Node | null = null;
+  const walk = (n: Node) => {
+    if (found) return;
+    if (n.type === "call" && n.childForFieldName("method")?.text === method) {
+      found = n.childForFieldName("receiver");
+      return;
+    }
+    for (let i = 0; i < n.namedChildCount; i++) walk(n.namedChild(i)!);
+  };
+  walk(ws.fileTree(u)!.rootNode);
+  return found!;
+};
+
+describe("Resolver.methodsOf", () => {
+  const OBJ = [
+    "module Game", // 0
+    "  class Entity", // 1
+    "    def base_move", // 2
+    "    end", // 3
+    "    def self.spawn", // 4
+    "    end", // 5
+    "  end", // 6
+    "  class Player < Entity", // 7
+    "    def dash", // 8
+    "    end", // 9
+    "    def self.build", // 10
+    "    end", // 11
+    "  end", // 12
+    "end", // 13
+  ].join("\n");
+
+  it("walks the superclass chain, nearest class first", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, OBJ);
+    const r = new Resolver(ws);
+    assertEquals(
+      r.methodsOf("Game::Player").map((d) => nameOfDef(ws, d)),
+      ["dash", "base_move"],
+    );
+  });
+
+  it("returns singleton methods separately, chain included", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, OBJ);
+    const r = new Resolver(ws);
+    assertEquals(
+      r.methodsOf("Game::Player", { singleton: true }).map((d) =>
+        nameOfDef(ws, d)
+      ),
+      ["build", "spawn"],
+    );
+  });
+
+  it("is cycle-safe when superclasses reference each other", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      "class A < B\n  def a\n  end\nend\nclass B < A\n  def b\n  end\nend\n",
+    );
+    const r = new Resolver(ws);
+    // Terminates; visits each class once.
+    assertEquals(r.methodsOf("A").map((d) => nameOfDef(ws, d)).sort(), [
+      "a",
+      "b",
+    ]);
+  });
+
+  it("returns nothing for an unknown class", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "class A\nend\n");
+    assertEquals(new Resolver(ws).methodsOf("Nope"), []);
+  });
+});
+
+describe("Resolver.receiverType — literal (rule 1)", () => {
+  const cases: [string, string, string][] = [
+    ["a = []", "a.each", "Array"],
+    ["a = {}", "a.each", "Hash"],
+    ["a = ''", "a.each", "String"],
+    ["a = 5", "a.each", "Numeric"],
+    ["a = 1.5", "a.each", "Numeric"],
+    ["a = :sym", "a.each", "Symbol"],
+  ];
+  for (const [assign, use, cls] of cases) {
+    it(`${assign} -> ${cls}`, () => {
+      const ws = new Workspace(ruby);
+      ws.indexFile(uri, `def m\n  ${assign}\n  ${use}\nend\n`);
+      const r = new Resolver(ws);
+      assertEquals(r.receiverType(uri, receiverOf(ws, uri, "each")), {
+        class: cls,
+        source: "literal",
+      });
+    });
+  }
+
+  it("uses the nearest preceding assignment on reassignment", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "def m\n  a = []\n  a = {}\n  a.each\nend\n");
+    const r = new Resolver(ws);
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "each")), {
+      class: "Hash",
+      source: "literal",
+    });
+  });
+
+  it("returns null for an unassigned local", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "def m\n  a.each\nend\n");
+    const r = new Resolver(ws);
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "each")), null);
+  });
+});
+
+describe("Resolver.receiverType — new (rule 2)", () => {
+  it("types `Klass.new` to the workspace class", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "module App",
+        "  class Anim",
+        "  end",
+        "  class S",
+        "    def go",
+        "      x = Anim.new",
+        "      x.play",
+        "    end",
+        "  end",
+        "end",
+        "",
+      ].join("\n"),
+    );
+    const r = new Resolver(ws);
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "play")), {
+      class: "App::Anim",
+      source: "new",
+    });
+  });
+
+  it("returns null when the class isn't in the workspace", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "def m\n  x = Unknown.new\n  x.play\nend\n");
+    const r = new Resolver(ws);
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "play")), null);
+  });
+});
+
+describe("Resolver.receiverType — ivar (rule 3)", () => {
+  it("types a consistently-assigned @ivar across the class body", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "class C",
+        "  def setup",
+        "    @items = []",
+        "  end",
+        "  def run",
+        "    @items.each",
+        "  end",
+        "end",
+        "",
+      ].join("\n"),
+    );
+    const r = new Resolver(ws);
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "each")), {
+      class: "Array",
+      source: "ivar",
+    });
+  });
+
+  it("returns null when @ivar assignments conflict", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "class C",
+        "  def a",
+        "    @v = []",
+        "  end",
+        "  def b",
+        "    @v = {}",
+        "  end",
+        "  def c",
+        "    @v.each",
+        "  end",
+        "end",
+        "",
+      ].join("\n"),
+    );
+    const r = new Resolver(ws);
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "each")), null);
+  });
+
+  it("returns null when any @ivar assignment is untypeable", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "class C",
+        "  def a",
+        "    @v = []",
+        "  end",
+        "  def b",
+        "    @v = build_it",
+        "  end",
+        "  def c",
+        "    @v.each",
+        "  end",
+        "end",
+        "",
+      ].join("\n"),
+    );
+    const r = new Resolver(ws);
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "each")), null);
+  });
+});
+
+describe("Resolver.receiverType — return dispatch (rule 4)", () => {
+  const FRAME = [
+    "module App", // 0
+    "  class UI", // 1
+    "    def view", // 2
+    "    end", // 3
+    "  end", // 4
+    "  class Camera", // 5
+    "    # @return [UI]", // 6
+    "    def ui", // 7
+    "    end", // 8
+    "  end", // 9
+    "  class Scene", // 10
+    "    def tick", // 11
+    "      camera.ui.view", // 12
+    "    end", // 13
+    "  end", // 14
+    "end", // 15
+  ].join("\n");
+
+  it("types `recv.meth` via a uniquely-named method's @return", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, FRAME);
+    const r = new Resolver(ws);
+    // receiver of `.view` is the `camera.ui` call.
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "view")), {
+      class: "App::UI",
+      source: "return",
+    });
+  });
+
+  it("does not dispatch when two methods share the name", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "module App",
+        "  class UI",
+        "    def view",
+        "    end",
+        "  end",
+        "  class A",
+        "    # @return [UI]",
+        "    def ui",
+        "    end",
+        "  end",
+        "  class B",
+        "    # @return [UI]",
+        "    def ui",
+        "    end",
+        "  end",
+        "  class Scene",
+        "    def tick",
+        "      camera.ui.view",
+        "    end",
+        "  end",
+        "end",
+        "",
+      ].join("\n"),
+    );
+    const r = new Resolver(ws);
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "view")), null);
+  });
+
+  it("does not dispatch a two-hop chain (nested return typing is barred)", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "module App",
+        "  class X",
+        "    def leaf",
+        "    end",
+        "  end",
+        "  class Y",
+        "    def leaf",
+        "    end",
+        "  end",
+        "  class S",
+        "    def go",
+        "      a.mid.leaf",
+        "    end",
+        "  end",
+        "end",
+        "",
+      ].join("\n"),
+    );
+    const r = new Resolver(ws);
+    // `leaf` is ambiguous, and typing `a.mid` would need a second return hop.
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "leaf")), null);
+  });
+
+  it("disambiguates a shared name via the receiver's own type", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "module App",
+        "  class UI",
+        "    def view",
+        "    end",
+        "  end",
+        "  class Camera",
+        "    # @return [UI]",
+        "    def ui",
+        "    end",
+        "  end",
+        "  class Other",
+        "    # @return [Nope]",
+        "    def ui",
+        "    end",
+        "  end",
+        "  class Scene",
+        "    def tick",
+        "      cam = Camera.new",
+        "      cam.ui.view",
+        "    end",
+        "  end",
+        "end",
+        "",
+      ].join("\n"),
+    );
+    const r = new Resolver(ws);
+    // `ui` is ambiguous globally, but `cam` types to Camera (rule 2), which
+    // owns exactly one `ui`.
+    assertEquals(r.receiverType(uri, receiverOf(ws, uri, "view")), {
+      class: "App::UI",
+      source: "return",
+    });
+  });
+});
+
+describe("Resolver.sameMethodLiteral", () => {
+  const methodNode = (ws: Workspace, u: string): Node => {
+    let found: Node | null = null;
+    const walk = (n: Node) => {
+      if (found) return;
+      if (n.type === "method") {
+        found = n;
+        return;
+      }
+      for (let i = 0; i < n.namedChildCount; i++) walk(n.namedChild(i)!);
+    };
+    walk(ws.fileTree(u)!.rootNode);
+    return found!;
+  };
+
+  it("returns the single unreassigned literal hash", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "def m\n  p = { x: 0, y: 0 }\n  use(p)\nend\n");
+    const r = new Resolver(ws);
+    const rhs = r.sameMethodLiteral(methodNode(ws, uri), "p");
+    assert(rhs);
+    assertEquals(rhs.type, "hash");
+  });
+
+  it("returns null when the local is reassigned", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "def m\n  p = { x: 0 }\n  p = { y: 1 }\n  use(p)\nend\n");
+    const r = new Resolver(ws);
+    assertEquals(r.sameMethodLiteral(methodNode(ws, uri), "p"), null);
+  });
+
+  it("returns null on element-assignment mutation", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "def m\n  p = { x: 0 }\n  p[:y] = 1\n  use(p)\nend\n");
+    const r = new Resolver(ws);
+    assertEquals(r.sameMethodLiteral(methodNode(ws, uri), "p"), null);
+  });
+
+  it("returns null on a bang or store mutating call", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "def m\n  p = { x: 0 }\n  p.merge!(q)\nend\n");
+    const r1 = new Resolver(ws);
+    assertEquals(r1.sameMethodLiteral(methodNode(ws, uri), "p"), null);
+
+    ws.indexFile(uri, "def m\n  p = { x: 0 }\n  p.store(:y, 1)\nend\n");
+    const r2 = new Resolver(ws);
+    assertEquals(r2.sameMethodLiteral(methodNode(ws, uri), "p"), null);
+  });
+
+  it("returns null for a non-literal RHS", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(uri, "def m\n  p = build\n  use(p)\nend\n");
+    const r = new Resolver(ws);
+    assertEquals(r.sameMethodLiteral(methodNode(ws, uri), "p"), null);
   });
 });

@@ -100,6 +100,25 @@ export class Workspace {
         }
       }
 
+      // `def self.x` is a class-level method (display `Class.x`). A non-`self`
+      // receiver (`def SomeConst.x`) isn't certain to be this namespace, so skip.
+      if (
+        node.type === "singleton_method" &&
+        node.childForFieldName("object")?.type === "self"
+      ) {
+        const name = node.childForFieldName("name");
+        if (name) {
+          addDef(name.text, {
+            uri,
+            range: nodeRange(name),
+            kind: "method",
+            container: container || undefined,
+            doc: docAbove(node.startPosition.row),
+            singleton: true,
+          });
+        }
+      }
+
       // attr_reader :x, :y and friends define methods too.
       if (
         node.type === "call" && !node.childForFieldName("receiver") &&

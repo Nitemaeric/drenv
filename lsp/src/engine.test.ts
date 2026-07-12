@@ -49,6 +49,57 @@ Faster class-level variants:
 - \`select\`
 `;
 
+const ARGS_RB = `module GTK
+  class Args
+    attr_accessor :inputs
+    attr_accessor :outputs
+    attr_accessor :state
+    attr_accessor :runtime
+    alias_method :gtk, :runtime
+  end
+end
+`;
+
+const INPUTS_MD = `# Inputs (\`args.inputs\`)
+
+## \`up\`
+
+Returns whether up is pressed.
+
+## Mouse (\`args.inputs.mouse\`)
+
+### \`x\`
+
+The mouse x coordinate.
+
+### \`click\` OR \`down\`
+
+Whether the mouse was clicked.
+
+## Keyboard (\`args.inputs.keyboard\`)
+
+### \`key_down\`
+
+Keys pressed this frame.
+
+## Controller (\`args.inputs.controller_(one-four)\`)
+
+### \`connected\`
+
+Whether the controller is connected.
+`;
+
+const OUTPUTS_MD = `# Outputs (\`args.outputs\`)
+
+## \`sprites\`
+
+Draw sprites this frame.
+
+## \`background_color\`
+
+Set the background color.
+`;
+
 const entry = (index: EngineIndex, cls: string, label: string): ApiEntry => {
   const found = index.api.get(cls)?.find((e) => e.label === label);
   assert(found, `expected ${cls} entry ${label}`);
@@ -74,6 +125,12 @@ beforeAll(async () => {
     GEOMETRY_MD,
   );
   await Deno.writeTextFile(join(dir, "docs", "api", "array.md"), ARRAY_MD);
+  await Deno.writeTextFile(
+    join(dir, "docs", "oss", "dragon", "args.rb"),
+    ARGS_RB,
+  );
+  await Deno.writeTextFile(join(dir, "docs", "api", "inputs.md"), INPUTS_MD);
+  await Deno.writeTextFile(join(dir, "docs", "api", "outputs.md"), OUTPUTS_MD);
   index = await EngineIndex.build(ruby, dir);
 });
 
@@ -148,16 +205,67 @@ describe("EngineIndex.build with a synthesized engine dir", () => {
     assertEquals(eachWithIndex.doc, "Iterates with the index.");
   });
 
-  it("populates the curated ARGS_CHAINS", () => {
-    assertEquals(
-      index.api.get("args")?.map((e) => e.label),
-      ["state", "inputs", "outputs", "audio", "gtk", "grid", "geometry"],
+  it("derives the args.* chain tree from md annotations and args.rb", () => {
+    // `args.` members: md H1 roots (inputs, outputs, state) unioned with the
+    // GTK::Args accessors (runtime) and alias targets (gtk).
+    const argMembers = index.api.get("args")?.map((e) => e.label) ?? [];
+    for (const m of ["inputs", "outputs", "state", "runtime", "gtk"]) {
+      assert(argMembers.includes(m), `args. missing ${m}`);
+    }
+
+    // Nested chains keyed separately; members from backticked headings.
+    assert(
+      index.api.get("args.inputs")?.some((e) => e.label === "up"),
     );
+    for (const leaf of ["mouse", "keyboard", "controller_one"]) {
+      assert(
+        index.api.get("args.inputs")?.some((e) => e.label === leaf),
+        `args.inputs missing leaf ${leaf}`,
+      );
+    }
+    assert(index.api.get("args.inputs.mouse")?.some((e) => e.label === "x"));
+    // Multi-token heading split on OR.
+    assert(
+      index.api.get("args.inputs.mouse")?.some((e) => e.label === "click"),
+    );
+    assert(index.api.get("args.inputs.mouse")?.some((e) => e.label === "down"));
     assert(
       index.api.get("args.inputs.keyboard")?.some((e) =>
         e.label === "key_down"
       ),
     );
+
+    // controller_(one-four) expands to four chains, each carrying the members.
+    for (const n of ["one", "two", "three", "four"]) {
+      assert(
+        index.api.get(`args.inputs.controller_${n}`)?.some((e) =>
+          e.label === "connected"
+        ),
+        `controller_${n} missing connected`,
+      );
+    }
+
+    assert(index.api.get("args.outputs")?.some((e) => e.label === "sprites"));
+    assert(
+      index.api.get("args.outputs")?.some((e) =>
+        e.label === "background_color"
+      ),
+    );
+
+    // args.state appears as an `args.` member but exposes no static sub-members
+    // (runtime/user-defined — P5): no chain entry is emitted for it.
+    assert(argMembers.includes("state"));
+    assertEquals(index.api.has("args.state"), false);
+  });
+
+  it("attaches member prose docs (not just the generic fallback)", () => {
+    const up = index.api.get("args.inputs")?.find((e) => e.label === "up");
+    assertEquals(up?.doc, "Returns whether up is pressed.");
+    // A leaf with no prose under it falls back to the generic label.
+    const sprites = index.api.get("args.outputs")?.find((e) =>
+      e.label === "sprites"
+    );
+    assertEquals(sprites?.doc, "Draw sprites this frame.");
   });
 
   it("exposes the validity receivers", () => {
@@ -314,6 +422,39 @@ describe("EngineIndex cache", () => {
     // The stale cache was rewritten with the current version.
     const after = JSON.parse(await Deno.readTextFile(path));
     assertEquals(after.drenvVersion, denoJson.version);
+
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(cacheDir, { recursive: true });
+  });
+
+  it("invalidates a stale cache SHAPE at an unchanged drenv version", async () => {
+    const dir = await makeFixture();
+    const cacheDir = await Deno.makeTempDir({ prefix: "drenv-cache-" });
+
+    // A cache from an OLDER schema (shape 1: the spike's, no schemaVersion) but
+    // the CURRENT drenv/engine version — the version checks alone would serve
+    // it; the schema guard must still reject and reparse.
+    const path = cacheFile(cacheDir, dir);
+    await Deno.writeTextFile(
+      path,
+      JSON.stringify({
+        drenvVersion: denoJson.version,
+        engineVersion: basename(dir),
+        api: [["Geometry", [{ label: "sentinel_shape1", doc: "x" }]]],
+        methodDocs: [],
+      }),
+    );
+
+    const rebuilt = await EngineIndex.build(ruby, { rootDir: dir, cacheDir });
+    assert(
+      !rebuilt.api.get("Geometry")?.some((e) => e.label === "sentinel_shape1"),
+      "stale shape-1 cache should have been rejected",
+    );
+    assert(
+      rebuilt.api.get("Geometry")?.some((e) => e.label === "intersect_rect?"),
+    );
+    const after = JSON.parse(await Deno.readTextFile(path));
+    assertEquals(after.schemaVersion, 2);
 
     await Deno.remove(dir, { recursive: true });
     await Deno.remove(cacheDir, { recursive: true });
