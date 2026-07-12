@@ -37,13 +37,14 @@ lsp/
     protocol.ts        JSON-RPC framing               → types
     analyze.ts         pure tree analysis             → ruby, types
     workspace.ts       workspace index                → ruby, analyze, types
-    resolve.ts         name/local/context resolution  → workspace, types
+    resolve.ts         name/local/context resolution  → workspace, ruby, types
     yard.ts            doc rendering                  → types (ConstResolver)
     engine.ts          engine-derived index           → ruby, analyze, types
     handlers/
+      ctx.ts           shared handler context         → workspace, resolve, yard, engine, types
       completion.ts    → workspace, resolve, yard, engine
       hover.ts         → workspace, resolve, yard, engine
-      navigation.ts    → workspace, resolve
+      navigation.ts    → workspace, resolve, analyze
       signature.ts     → workspace, engine
       diagnostics.ts   → workspace, engine, analyze
 ```
@@ -122,8 +123,10 @@ export class Connection {
 
 Pure functions over tree nodes, extracted verbatim from the spike:
 `extractParams(method: Node): Param[]`, `deriveShapes` (internal),
-`renderSignature(name: string, params: Param[]): string`, and the `GEOM_ATTRS`
-whitelist.
+`renderSignature(name: string, params: Param[]): string`,
+`nodeRange(node:
+Node): Range` (the shared Node→Range helper used by workspace,
+diagnostics, navigation, and resolve), and the `GEOM_ATTRS` whitelist.
 
 ### workspace.ts
 
@@ -131,7 +134,10 @@ whitelist.
 export class Workspace {
   constructor(ruby: Ruby);
   readonly defs: Map<string, Def[]>;
-  /** Monotonic; bumped by indexFile/removeFile. Consumers cache against it. */
+  /** Monotonic, starts at 0; every `defs` mutation (indexFile, removeFile)
+   * bumps it. Consumers cache against it and must seed their cached value with
+   * a sentinel that can never equal a live generation (the spike uses -1) so
+   * the first query always rebuilds. */
   generation: number;
   fileText(uri: string): string | undefined;
   fileTree(uri: string): Tree | undefined;
@@ -140,17 +146,30 @@ export class Workspace {
    * class/module defs, attr_reader/writer/accessor symbol defs, superclass
    * capture, line-walk docAbove (comments are NOT reliable tree siblings). */
   indexFile(uri: string, text: string): Tree;
+  /** Drops `fileText`/`fileTree` for `uri` and bumps `generation`. New
+   * behavior (no spike caller): used by didClose only for buffers with no
+   * on-disk copy — see server.ts. */
   removeFile(uri: string): void;
-  /** Walks .rb files under roots, skipping vendored twins per skips. */
-  scan(roots: string[], skips?: Set<string>): Promise<void>;
+  /** Indexes each root's `mygame/app`, `app`, and `lib`, then the vendored
+   * packages under `<root>/mygame/vendor` and `<root>/vendor`, skipping twins
+   * computed per vendor base (missing dirs are swallowed). `fileText`/
+   * `fileTree` cover every scanned on-disk file, not just open buffers.
+   * `indexedRoots` is the `resolve()`-normalized set of all indexed roots — it
+   * must include the workspace root passed to the server plus every detected
+   * project dir (spike: `new Set([root, ...projectDirs].map(resolve))`). */
+  scan(roots: string[], indexedRoots: Set<string>): Promise<void>;
 }
 /** Spike's dormant/monorepo detection: markers (dragonruby, dragonruby.exe,
  * mygame) at root and one level down; root drenv.toml counts as a library. */
 export function detectProjectDirs(root: string): Promise<string[]>;
-/** Spike's vendorSkips: vendored packages whose lock `path:` source resolves
- * into an indexed root (reuses utils/lockfile readLock). */
+/** Spike's vendorSkips, computed per vendor base: vendored packages whose lock
+ * (`<base>/drenv.lock`, via utils/lockfile readLock) has a `path:` source that
+ * `resolve()`s into `indexedRoots`. Skips are per-base — `mygame/vendor` and
+ * `<root>/vendor` may carry different locks, so a single union set can
+ * over-skip. May instead be an internal helper of `scan`. */
 export function vendorSkips(
-  roots: string[],
+  base: string,
+  indexedRoots: Set<string>,
 ): Promise<Set<string>>;
 ```
 
@@ -171,7 +190,9 @@ export class Resolver implements ConstResolver {
   wordAt(uri: string, pos: Pos): string | null;
   enclosingNamespace(node: Node): string;
   resolveLocal(uri: string, pos: Pos, word: string): LocalHit | null;
-  /** Qualified class/module -> Def; cached against ws.generation. */
+  /** Qualified class/module -> Def; cached against ws.generation. Skips method
+   * and kind-less defs, and keeps the first Def per qualified name (first-wins;
+   * later same-named defs do not overwrite). */
   namespaceIndex(): Map<string, Def>;
   resolveConstName(path: string, container: string): string | null;
   resolveConst(path: string, container: string): Def | null;
@@ -187,8 +208,14 @@ export class Resolver implements ConstResolver {
 export class YardRenderer {
   constructor(resolver: ConstResolver);
   /** Raw comment block (plain or YARD) -> markdown. Cache keyed by
-   * container + raw, invalidated externally by recreating or via clear(). */
+   * container + raw. */
   render(raw: string, container?: string): string;
+  /** Render a single YARD type list, linking workspace constants. (spike
+   * renderType) — exposed because hover hand-builds inline `@param` docs from
+   * it rather than the bulleted section `render` emits. */
+  renderType(type: string, container: string): string;
+  /** RDoc `+code+` → markdown backticks. (spike inlineMd) — same hover use. */
+  inlineMd(s: string): string;
   clear(): void;
 }
 ```
@@ -198,22 +225,32 @@ Behavior extracted verbatim: `@param`/`@return`/`@yield`/`@yieldparam`/
 italics, indented continuations (blockquote-aware), RDoc `+code+` → backticks,
 namespace-relative constant links (`renderType`, `seeLink`).
 
+To match the spike, `server.ts` does NOT call `clear()` on reindex — the render
+cache persists for the process lifetime (cached constant links may go stale
+after the namespace index moves; the spike accepts this). `clear()` exists only
+for tests that recreate state.
+
 ### engine.ts
 
 ```ts
 export class EngineIndex {
   /** Discovers the installed engine like the spike (utils/installed-versions,
-   * constants versionsPath). Returns null when no engine is installed —
-   * the server still serves workspace intelligence. rootDir overrides
-   * discovery for tests. */
-  static build(ruby: Ruby, rootDir?: string): Promise<EngineIndex | null>;
-  readonly label: string; // e.g. "7.11"
+   * constants versionsPath). Never returns null: with no engine installed it
+   * returns an empty index (label "unknown", empty `api`/`methodDocs`, no args
+   * chains — exactly the spike's early-return state) so the server still serves
+   * workspace intelligence. The version-independent `coreMethods`/`literalClass`
+   * tables are populated even in the empty index, so literal-receiver core
+   * completion keeps working with no engine. `rootDir`, when given, is used
+   * directly as the engine directory (the dir the spike forms as
+   * `join(versionsPath, version)`, holding the parsed `.rb`/docs sources);
+   * discovery is skipped and `label` is `basename(rootDir)`. */
+  static build(ruby: Ruby, rootDir?: string): Promise<EngineIndex>;
+  readonly label: string; // e.g. "7.11", or "unknown" with no engine
   readonly api: Map<string, ApiEntry[]>; // "Geometry", "Easing", args chains
   readonly validityReceivers: Set<string>;
   methodDocs(cls: string): Map<string, string> | undefined;
   coreMethods(cls: string): string[] | undefined;
   literalClass(prefix: string): string | null;
-  readonly perfGuideHref: string | undefined;
 }
 ```
 
@@ -227,17 +264,28 @@ parsing, shape derivation, doc attachment.
 Stateless functions over a shared context:
 
 ```ts
-// in types.ts or a small handlers/ctx.ts (implementer's choice, no cycles)
+// handlers/ctx.ts — it imports the four concrete classes, so it must NOT live
+// in types.ts (which imports nothing from src/; that edge would cycle
+// types → workspace → types, even as `import type`).
 export type Ctx = {
   ws: Workspace;
   resolver: Resolver;
   yard: YardRenderer;
-  engine: EngineIndex | null;
+  engine: EngineIndex;
 };
 ```
 
+`ctx.engine` is always present but may be the empty index (no engine installed):
+its `api`/`methodDocs` are empty and it exposes no args chains. Every
+engine-derived branch must treat empty maps as "no engine data" and degrade
+exactly as the spike does — literal-receiver core completion
+(`coreMethods`/`literalClass`), syntax-error diagnostics, and array-manipulation
+perf hints are all version-independent and keep firing with an empty engine.
+
 - `completion.ts`: `completion(ctx, uri, pos): unknown[]` — engine chains,
-  literal-receiver core methods, workspace fallback with unambiguous docs.
+  literal-receiver methods (union of `coreMethods(cls)` and `methodDocs(cls)`
+  keys, with an `mruby` label fallback), workspace fallback with unambiguous
+  docs.
 - `hover.ts`: `hover(ctx, uri, pos): unknown` — engine api; instance/class
   variables (attr-doc borrowing); locals (`@param` doc extraction); def-site
   pinning; context candidates; reopened-namespace collapse; ambiguous list.
@@ -247,20 +295,34 @@ export type Ctx = {
   `{uri, range}` payloads (strip Def extras).
 - `signature.ts`: `signatureHelp(ctx, uri, pos)` — tree-based active param.
 - `diagnostics.ts`: `diagnostics(ctx, uri): unknown[]` — syntax errors,
-  validity, arity, kwargs, duck shapes, perf hints. All gating rules
+  validity, arity, kwargs, duck shapes, perf hints. Validity/arity/kwargs/shape
+  fire only when both `engine.validityReceivers.has(recv)` AND `engine.api` has
+  a non-empty entry for `recv` (an unparsed receiver emits nothing). `MUTATORS`,
+  the fixed `PERF_GUIDE` URL, and `mutationDuringIteration` are module
+  constants/functions here — syntax errors and perf hints are engine-independent
+  and fire with or without an engine, as in the spike. All gating rules
   (VALIDITY_RECEIVERS only, literal args only, Information severity for perf)
   preserved exactly, including message wording (client-test asserts on it).
 
 ### server.ts (integration, rewritten last)
 
-Thin: parse args → `Ruby.init` → dormant detection (empty capabilities + idle
-when no project markers) → build `Ctx` → `EngineIndex.build` → workspace scan →
-dispatch loop over `readMessages(Deno.stdin.readable)`. didOpen/didChange
-reindex + publish diagnostics; didClose drops open-file state (keep indexed defs
-for on-disk files). **Every request/notification is wrapped in try/catch: a
-handler failure logs to stderr and answers `null` — it must never kill the
-server.** Unknown methods: respond `null` to requests, ignore notifications.
-Preserve the spike's initialize response shape.
+Thin: parse args → `Ruby.init` → dispatch loop over
+`readMessages(Deno.stdin.readable)`, awaiting each message before the next
+(sequential — this is what guarantees `initialize`'s scan finishes before the
+first `didOpen`, and serializes `indexFile`/`generation` bumps and diagnostic
+publication). `EngineIndex.build`, workspace scan, and dormant detection run
+inside the `initialize` handler (they need `rootUri`/`rootPath`); `Ruby.init` is
+the only pre-loop setup. With no project markers the server goes dormant:
+respond with empty `capabilities` and a `serverInfo.version` whose string
+contains `"dormant"` (client-test asserts on it). didOpen/didChange reindex +
+publish diagnostics. didClose (new behavior, not in the spike) re-reads the uri
+from disk and re-indexes it if it still exists, calling `removeFile` only for
+buffers with no on-disk twin — closing a still-on-disk file must not drop its
+defs or `fileText` (references scans every `fileText` entry). **Every request/
+notification is wrapped in try/catch: a handler failure logs to stderr and
+answers `null` (never an LSP error object) — it must never kill the server.**
+Unknown methods: respond `null` to requests, ignore notifications. Preserve the
+spike's initialize response shape.
 
 ## Definition of done
 
