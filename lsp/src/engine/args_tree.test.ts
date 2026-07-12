@@ -160,4 +160,36 @@ describe("args_tree.buildArgsChains", () => {
     const empty = await buildArgsChains(await Deno.makeTempDir());
     assertEquals(empty.size, 0);
   });
+
+  it("keys a bare-entity doc file to its args chain (grid.md -> args.grid)", async () => {
+    const d = await Deno.makeTempDir({ prefix: "drenv-args-root-" });
+    await ensureDir(join(d, "docs", "api"));
+    // `# Grid` carries no `(`args.grid`)` annotation; the file map supplies it.
+    await Deno.writeTextFile(
+      join(d, "docs", "api", "grid.md"),
+      [
+        "# Grid",
+        "",
+        "## `bottom`",
+        "",
+        "Bottom edge.",
+        "",
+        "## Grid Property Categorizations", // category heading, no member
+        "",
+        "## `w`",
+        "",
+        "Width.",
+      ].join("\n"),
+    );
+    const chains = await buildArgsChains(d);
+    const grid = labels(chains, "args.grid");
+    assert(grid.includes("bottom"), "args.grid missing bottom");
+    assert(grid.includes("w"), "args.grid missing w");
+    assertEquals(grid.length, 2); // the category heading contributes nothing
+    assertEquals(
+      chains.get("args.grid")?.find((e) => e.label === "bottom")?.doc,
+      "Bottom edge.",
+    );
+    await Deno.remove(d, { recursive: true });
+  });
 });

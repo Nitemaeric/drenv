@@ -1065,6 +1065,18 @@ def audio_demo args
   args.audio.
 end
 
+def grid_demo args
+  args.grid.
+end
+
+def gtk_demo args
+  args.gtk.
+end
+
+def geometry_demo args
+  args.geometry.
+end
+
 def variable_demo
   enemies = []
   enemies.each
@@ -1158,6 +1170,35 @@ check(
   "p2: args.audio. lists engine-derived members (volume)",
   audioLabels.includes("volume"),
   `${audioLabels.length} items: ${audioLabels.slice(0, 6).join(", ")}`,
+);
+
+// P2: chains from bare-entity docs (Grid/Layout/Runtime) and the Geometry
+// delegate — previously unkeyed because their headings carry no `(`args.x`)`.
+const chainLabels = async (chain: string): Promise<string[]> => {
+  const c = await p23Sess.request("textDocument/completion", {
+    textDocument: { uri: p23MainUri },
+    position: endOf(`${chain}.`),
+  });
+  return (c ?? []).map((x: { label: string }) => x.label);
+};
+const gridLabels = await chainLabels("args.grid");
+check(
+  "p2: args.grid. lists grid members (bottom, top, w, h)",
+  ["bottom", "top", "w", "h"].every((m) => gridLabels.includes(m)),
+  `${gridLabels.length} items`,
+);
+const gtkLabels = await chainLabels("args.gtk");
+check(
+  "p2: args.gtk. lists runtime methods (reset, dlopen)",
+  gtkLabels.includes("reset") && gtkLabels.includes("dlopen"),
+  `${gtkLabels.length} items`,
+);
+const geoChainLabels = await chainLabels("args.geometry");
+check(
+  "p2: args.geometry. mirrors the Geometry module (distance)",
+  geoChainLabels.includes("distance") &&
+    geoChainLabels.includes("intersect_rect?"),
+  `${geoChainLabels.length} items`,
 );
 
 // P2: hover on a core method resolves the literal receiver and shows engine

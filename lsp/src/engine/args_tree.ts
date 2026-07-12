@@ -17,6 +17,17 @@ const NO_SUBMEMBERS = new Set([
   "args.pixel_arrays",
 ]);
 
+// Some docs describe a whole `args.*` namespace under a bare entity heading
+// (`# Grid`, `# Layout`, `# Runtime (`DR`)`) with no `(`args.x`)` annotation, so
+// their members never get keyed to a chain. Map the file to the chain its
+// backticked method headings belong to. (`args.geometry` mirrors the Geometry
+// module and is aliased in engine.ts instead, to keep its signatures.)
+const FILE_CHAIN_ROOTS: Record<string, string> = {
+  "grid.md": "args.grid",
+  "layout.md": "args.layout",
+  "runtime.md": "args.gtk",
+};
+
 const CHAIN_ANNOTATION = /\(`(args[^`]*)`\)/;
 
 type MemberDocs = Map<string, string>; // member name -> doc (may be empty)
@@ -104,7 +115,11 @@ export async function buildArgsChains(
 
   for (const file of files) {
     const text = await Deno.readTextFile(join(apiDir, file));
-    let current: string[] = []; // innermost open chain(s); [] outside any chain
+    // A file mapped to a chain root opens that chain from the top; an explicit
+    // `(`args.x`)` annotation still overrides it if one appears.
+    const root = FILE_CHAIN_ROOTS[file];
+    let current: string[] = root ? [root] : [];
+    if (root) ensure(root);
     for (const h of parseHeadings(text)) {
       const ann = h.text.match(CHAIN_ANNOTATION);
       if (ann) {

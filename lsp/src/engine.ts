@@ -251,6 +251,11 @@ export class EngineIndex {
       this.api.set(chain, members);
     }
 
+    // `args.geometry` delegates to the Geometry module — reuse its entries so
+    // the chain carries the same parsed signatures rather than bare doc names.
+    const geometry = this.api.get("Geometry");
+    if (geometry) this.api.set("args.geometry", geometry);
+
     for (const [file, key] of DOC_FILES) {
       await this.#loadDocs(dir, file, key);
     }
