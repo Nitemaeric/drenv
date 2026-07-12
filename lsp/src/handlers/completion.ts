@@ -1,27 +1,7 @@
+import { CORE_CLASSES, literalCoreClass } from "../resolve.ts";
 import type { Node } from "../ruby.ts";
 import type { Def, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
-
-const CORE_CLASSES = new Set(["Array", "Hash", "String", "Numeric", "Symbol"]);
-
-// A literal receiver node names its class outright (mirrors engine.literalClass,
-// but node-typed so a variable's inferred literal RHS resolves the same way).
-const literalCore = (n: Node): string | null => {
-  switch (n.type) {
-    case "array":
-      return "Array";
-    case "hash":
-      return "Hash";
-    case "string":
-      return "String";
-    case "integer":
-    case "float":
-      return "Numeric";
-    case "simple_symbol":
-      return "Symbol";
-  }
-  return null;
-};
 
 export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
   const { ws, resolver, yard, engine } = ctx;
@@ -62,7 +42,8 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
   // `@anim = Klass.new` → `@anim.` completes the class's methods (inherited too).
   const recv = receiverNode(ctx, uri, pos, prefix);
   if (recv) {
-    const guess = literalCore(recv) ?? resolver.receiverType(uri, recv)?.class;
+    const guess = literalCoreClass(recv) ??
+      resolver.receiverType(uri, recv)?.class;
     if (guess) {
       if (CORE_CLASSES.has(guess)) return completeCore(guess);
       const typed = classMethodCompletions(ctx, guess);

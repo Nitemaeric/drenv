@@ -52,6 +52,21 @@ const applyTextChanges = (text: string, changes: any[]): string => {
   return text;
 };
 
+// A watch event can fire before the writer's bytes are flushed to a state a
+// separate process reads, and heavy fd pressure makes an open transiently fail;
+// a genuine deletion arrives as its own Deleted event, so a Created/Changed read
+// is worth a few short retries before we treat the file as gone.
+const readWatchedFile = async (path: string): Promise<string> => {
+  for (let attempt = 0;; attempt++) {
+    try {
+      return await Deno.readTextFile(path);
+    } catch (error) {
+      if (attempt >= 4) throw error;
+      await new Promise((r) => setTimeout(r, 10 * (attempt + 1)));
+    }
+  }
+};
+
 export default async function lsp() {
   const ruby = await Ruby.init();
   const conn = new Connection(Deno.stdout);
@@ -154,7 +169,7 @@ export default async function lsp() {
           ctx.ws.removeFile(uri);
         } else {
           try {
-            ctx.ws.indexFile(uri, await Deno.readTextFile(fromFileUrl(uri)));
+            ctx.ws.indexFile(uri, await readWatchedFile(fromFileUrl(uri)));
           } catch {
             ctx.ws.removeFile(uri);
           }
