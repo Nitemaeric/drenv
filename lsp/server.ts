@@ -370,7 +370,7 @@ const renderDoc = (raw: string): string => {
     const tag = line.match(/^@(\w+)\s*(.*)$/);
     if (!tag) {
       if (continuation && line.startsWith("  ")) {
-        continuation.push(line.trim());
+        continuation[continuation.length - 1] += ` ${line.trim()}`;
         continue;
       }
       continuation = null;
@@ -437,6 +437,7 @@ const indexFile = (uri: string, text: string) => {
   fileText.set(uri, text);
   const tree = parser.parse(text)!;
   fileTree.set(uri, tree);
+  const lines = text.split("\n");
 
   // Drop this file's old definitions, then re-add.
   for (const [name, locs] of defs) {
@@ -453,11 +454,14 @@ const indexFile = (uri: string, text: string) => {
         list.push({ uri, range: nodeRange(name) });
         defs.set(name.text, list);
 
+        // Comments aren't reliably tree siblings of the def they document (a
+        // class's doc block can attach to the enclosing module node), so walk
+        // raw lines upward instead.
         const docLines: string[] = [];
-        let prev = node.previousNamedSibling;
-        while (prev?.type === "comment") {
-          docLines.unshift(prev.text.replace(/^#[ ]?/, ""));
-          prev = prev.previousNamedSibling;
+        for (let row = node.startPosition.row - 1; row >= 0; row--) {
+          const trimmed = lines[row].trim();
+          if (!trimmed.startsWith("#")) break;
+          docLines.unshift(trimmed.replace(/^#[ ]?/, ""));
         }
         if (docLines.length > 0) {
           defDocs.set(name.text, renderDoc(docLines.join("\n")));
