@@ -43,14 +43,27 @@ generous; squiggles are certain.
 
 ## Editor setup
 
-**Zed** — install the drenv extension (until it reaches the extension registry:
-clone the repo and use `zed: install dev extension` on `editors/zed/`). The
-server registers for Ruby and TOML globally — it stays dormant outside
-DragonRuby projects, so this is safe.
+**VS Code** — install
+[drenv](https://marketplace.visualstudio.com/items?itemName=nitemaeric.drenv-lsp)
+from the Marketplace: search **drenv** in the Extensions panel, or run
+`code --install-extension nitemaeric.drenv-lsp`. Open a Ruby file in a
+DragonRuby project and it activates.
 
-**VS Code** — install the extension (until it reaches the marketplace: build the
-`.vsix` from `editors/vscode/` and `code --install-extension
-drenv-lsp-*.vsix`).
+**Emacs** — with built-in eglot (Emacs 29+):
+
+```elisp
+(with-eval-after-load 'eglot
+  (add-to-list 'eglot-server-programs
+               '((ruby-mode ruby-ts-mode) . ("drenv" "lsp"))))
+```
+
+then `M-x eglot` in a DragonRuby project. Full eglot and lsp-mode setup in
+[`editors/emacs/README.md`](../editors/emacs/README.md).
+
+**Zed** — coming to the extension registry (review pending). Until then, clone
+the repo and use `zed: install dev extension` on `editors/zed/`. The server
+registers for Ruby and TOML globally and stays dormant outside DragonRuby
+projects, so this is safe.
 
 **Anything else** — point your editor's LSP client at command `drenv`, args
 `["lsp"]`, for Ruby files. The conventional `--stdio` flag is accepted. A Neovim

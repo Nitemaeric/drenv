@@ -341,29 +341,66 @@ export default function LspDocs() {
             <h2 class="mb-6 text-2xl font-semibold tracking-tight">
               Editor setup
             </h2>
+            <p class="mb-6 text-sm text-white/60">
+              Install{" "}
+              <a href="https://drenv.org" class="underline hover:text-white/80">
+                drenv
+              </a>{" "}
+              0.17.0 or newer first, so <code class="text-rose-400">drenv</code>
+              {" "}
+              is on your <code class="text-rose-400">PATH</code>.
+            </p>
             <div class="space-y-6">
+              <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
+                <div class="font-semibold">VS Code</div>
+                <p class="mt-2 text-sm text-white/70">
+                  Install{" "}
+                  <a
+                    href="https://marketplace.visualstudio.com/items?itemName=nitemaeric.drenv-lsp"
+                    class="underline hover:text-white/80"
+                  >
+                    drenv
+                  </a>{" "}
+                  from the Marketplace — search{" "}
+                  <span class="text-white/90">drenv</span>{" "}
+                  in the Extensions panel, or run{" "}
+                  <code class="text-rose-400">
+                    code --install-extension nitemaeric.drenv-lsp
+                  </code>. Open a Ruby file in a DragonRuby project and it
+                  activates.
+                </p>
+              </div>
+              <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
+                <div class="font-semibold">Emacs</div>
+                <p class="mt-2 text-sm text-white/70">
+                  With built-in <span class="text-white/90">eglot</span>{" "}
+                  (Emacs 29+), register the server for Ruby:
+                </p>
+                <pre class="mt-3 overflow-x-auto rounded-lg border border-white/10 bg-black px-4 py-3 font-mono text-xs text-emerald-300"><code>{`(with-eval-after-load 'eglot
+  (add-to-list 'eglot-server-programs
+               '((ruby-mode ruby-ts-mode) . ("drenv" "lsp"))))`}</code></pre>
+                <p class="mt-3 text-sm text-white/70">
+                  Then <code class="text-rose-400">M-x eglot</code>{" "}
+                  in a DragonRuby project. Full eglot and lsp-mode setup in{" "}
+                  <a
+                    href="https://github.com/Nitemaeric/drenv/blob/main/editors/emacs/README.md"
+                    class="underline hover:text-white/80"
+                  >
+                    editors/emacs
+                  </a>.
+                </p>
+              </div>
               <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
                 <div class="font-semibold">Zed</div>
                 <p class="mt-2 text-sm text-white/70">
-                  Install the drenv extension. Until it reaches the extension
-                  registry: clone the repo and run{" "}
+                  Coming to the Zed extension registry (review pending). Until
+                  then, clone the repo and run{" "}
                   <code class="text-rose-400">zed: install dev extension</code>
                   {" "}
                   on{" "}
                   <code class="text-rose-400">editors/zed/</code>. Safe to
                   enable globally — the server stays dormant outside DragonRuby
                   projects.
-                </p>
-              </div>
-              <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
-                <div class="font-semibold">VS Code</div>
-                <p class="mt-2 text-sm text-white/70">
-                  Install the extension. Until it reaches the marketplace: build
-                  the <code class="text-rose-400">.vsix</code> from{" "}
-                  <code class="text-rose-400">editors/vscode/</code> and{" "}
-                  <code class="text-rose-400">
-                    code --install-extension drenv-lsp-*.vsix
-                  </code>.
                 </p>
               </div>
               <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">
