@@ -4,10 +4,11 @@
 // syntax + method-validity diagnostics). Not production code.
 import { Language, Node, Parser, Tree } from "npm:web-tree-sitter@0.25.3";
 import { walk } from "@std/fs";
-import { fromFileUrl, join, toFileUrl } from "@std/path";
+import { fromFileUrl, join, resolve, toFileUrl } from "@std/path";
 
 import { versionsPath } from "../constants.ts";
 import { installedVersions } from "../utils/installed-versions.ts";
+import { readLock } from "../utils/lockfile.ts";
 
 // --- tree-sitter setup (all bytes, so `deno compile --include` just works) ---
 
@@ -374,20 +375,66 @@ const indexFile = (uri: string, text: string) => {
   return tree;
 };
 
-const scanWorkspace = async (root: string) => {
-  for (const sub of ["mygame/app", "mygame/vendor", "app", "vendor", "lib"]) {
-    const dir = join(root, sub);
+const indexTree = async (dir: string) => {
+  try {
+    for await (
+      const entry of walk(dir, { exts: [".rb"], includeDirs: false })
+    ) {
+      indexFile(
+        toFileUrl(entry.path).href,
+        await Deno.readTextFile(entry.path),
+      );
+    }
+  } catch {
+    // Directory doesn't exist in this project shape — fine.
+  }
+};
+
+/**
+ * Vendored packages whose `path:` source resolves to another indexed project
+ * root are twins of workspace source (the vendored copy is a build artifact —
+ * drenv re-syncs it from the source). Skip them so definitions point at the
+ * one true copy, the one that's safe to edit.
+ */
+const vendorSkips = async (
+  base: string,
+  indexedRoots: Set<string>,
+): Promise<Set<string>> => {
+  const skips = new Set<string>();
+  const lock = await readLock(join(base, "drenv.lock")).catch(() => null);
+
+  for (const dep of lock?.dependencies ?? []) {
+    if (!dep.source.startsWith("path:")) continue;
+    const source = resolve(base, dep.source.slice("path:".length));
+    if (indexedRoots.has(source)) {
+      skips.add(dep.name);
+      console.error(
+        `drenv-lsp: '${dep.name}' vendored from workspace source ${source} — indexing the source only`,
+      );
+    }
+  }
+  return skips;
+};
+
+const scanWorkspace = async (root: string, indexedRoots: Set<string>) => {
+  for (const sub of ["mygame/app", "app", "lib"]) {
+    await indexTree(join(root, sub));
+  }
+
+  for (const base of [join(root, "mygame"), root]) {
+    const vendor = join(base, "vendor");
+    let entries: Deno.DirEntry[];
     try {
-      for await (
-        const entry of walk(dir, { exts: [".rb"], includeDirs: false })
-      ) {
-        indexFile(
-          toFileUrl(entry.path).href,
-          await Deno.readTextFile(entry.path),
-        );
-      }
+      entries = await Array.fromAsync(Deno.readDir(vendor));
     } catch {
-      // Directory doesn't exist in this project shape — fine.
+      continue;
+    }
+
+    const skips = await vendorSkips(base, indexedRoots);
+    for (const entry of entries) {
+      if (entry.isDirectory && !skips.has(entry.name)) {
+        await indexTree(join(vendor, entry.name));
+      }
     }
   }
 };
@@ -1075,8 +1122,9 @@ const handle = async (msg: any) => {
       }
 
       await buildApiIndex();
+      const indexedRoots = new Set([root, ...roots].map((p) => resolve(p)));
       for (const dir of roots) {
-        await scanWorkspace(dir);
+        await scanWorkspace(dir, indexedRoots);
       }
       await respond(id, {
         capabilities: {
