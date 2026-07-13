@@ -422,8 +422,14 @@ export default function LspDocs() {
               </div>
             </div>
             <p class="mt-6 text-sm text-white/55">
-              Full reference, project detection rules, and troubleshooting in
-              the{" "}
+              Every rule, by feature, on the{" "}
+              <a
+                href="/docs/lsp/reference"
+                class="underline hover:text-white/80"
+              >
+                rule reference
+              </a>{" "}
+              page. Project detection and troubleshooting in the{" "}
               <a
                 href="https://github.com/Nitemaeric/drenv/blob/main/docs/lsp.md"
                 class="underline hover:text-white/80"
