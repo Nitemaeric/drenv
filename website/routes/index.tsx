@@ -2,7 +2,8 @@ import Nav from "../components/Nav.tsx";
 import Footer from "../components/Footer.tsx";
 import Terminal from "../components/Terminal.tsx";
 import InstallCommand from "../islands/InstallCommand.tsx";
-import denoConfig from "../../deno.json" with { type: "json" };
+import { defineRoute } from "$fresh/server.ts";
+import { latestVersion } from "../utils/version.ts";
 
 const QUICK_START: [string, string?][] = [
   ["drenv install", "     # download DragonRuby (asks which tier you own)"],
@@ -29,7 +30,8 @@ const FEATURES = [
   },
 ];
 
-export default function Home() {
+export default defineRoute(async () => {
+  const version = await latestVersion();
   return (
     <div class="bg-zinc-950 text-white">
       <Nav />
@@ -61,7 +63,7 @@ export default function Home() {
               and vendor your game's dependencies — one small, fast CLI.
             </p>
 
-            <InstallCommand version={denoConfig.version} />
+            <InstallCommand version={version} />
           </div>
         </div>
 
@@ -202,4 +204,4 @@ export default function Home() {
       <Footer />
     </div>
   );
-}
+});

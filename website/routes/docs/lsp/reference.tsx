@@ -1,7 +1,8 @@
 import { Head } from "$fresh/runtime.ts";
+import { defineRoute } from "$fresh/server.ts";
 import Nav from "../../../components/Nav.tsx";
 import Footer from "../../../components/Footer.tsx";
-import denoConfig from "../../../../deno.json" with { type: "json" };
+import { latestVersion } from "../../../utils/version.ts";
 
 type Rule = { name: string; detail: string; tag?: string };
 type Group = { id: string; title: string; blurb: string; rules: Rule[] };
@@ -264,7 +265,8 @@ function GroupSection({ group }: { group: Group }) {
   );
 }
 
-export default function LspReference() {
+export default defineRoute(async () => {
+  const version = await latestVersion();
   return (
     <>
       <Head>
@@ -283,7 +285,7 @@ export default function LspReference() {
           <div class="mt-4 flex items-baseline gap-3">
             <h1 class="text-4xl font-bold tracking-tight">Rule reference</h1>
             <span class="rounded-full bg-white/5 px-2.5 py-0.5 text-xs tabular-nums text-white/60">
-              v{denoConfig.version}
+              v{version}
             </span>
           </div>
           <p class="mt-4 max-w-2xl text-lg text-white/70">
@@ -345,4 +347,4 @@ export default function LspReference() {
       </div>
     </>
   );
-}
+});

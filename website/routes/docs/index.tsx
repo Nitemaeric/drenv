@@ -1,8 +1,9 @@
 import { Head } from "$fresh/runtime.ts";
+import { defineRoute } from "$fresh/server.ts";
 import Nav from "../../components/Nav.tsx";
 import Footer from "../../components/Footer.tsx";
 import Terminal from "../../components/Terminal.tsx";
-import denoConfig from "../../../deno.json" with { type: "json" };
+import { latestVersion } from "../../utils/version.ts";
 
 const QUICK_START: [string, string?][] = [
   ["drenv install", "     # download DragonRuby (asks which tier you own)"],
@@ -127,7 +128,8 @@ function Snippet({ children }: { children: string }) {
   );
 }
 
-export default function Docs() {
+export default defineRoute(async () => {
+  const version = await latestVersion();
   return (
     <>
       <Head>
@@ -155,7 +157,7 @@ export default function Docs() {
                 href="https://github.com/Nitemaeric/drenv/releases/latest"
                 class="rounded-full bg-white/5 px-2.5 py-0.5 text-xs tabular-nums text-white/60 transition-colors hover:text-white/90"
               >
-                Latest v{denoConfig.version}
+                Latest v{version}
               </a>
             </div>
             <p class="mb-3 text-white/70">
@@ -291,4 +293,4 @@ export default function Docs() {
       </div>
     </>
   );
-}
+});
