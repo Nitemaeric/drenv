@@ -6,6 +6,7 @@ import * as $_404 from "./routes/_404.tsx";
 import * as $_app from "./routes/_app.tsx";
 import * as $docs_index from "./routes/docs/index.tsx";
 import * as $docs_lsp from "./routes/docs/lsp.tsx";
+import * as $docs_lsp_reference from "./routes/docs/lsp/reference.tsx";
 import * as $index from "./routes/index.tsx";
 import * as $install_ps1 from "./routes/install.ps1.ts";
 import * as $install_sh from "./routes/install.sh.ts";
@@ -18,6 +19,7 @@ const manifest = {
     "./routes/_app.tsx": $_app,
     "./routes/docs/index.tsx": $docs_index,
     "./routes/docs/lsp.tsx": $docs_lsp,
+    "./routes/docs/lsp/reference.tsx": $docs_lsp_reference,
     "./routes/index.tsx": $index,
     "./routes/install.ps1.ts": $install_ps1,
     "./routes/install.sh.ts": $install_sh,
