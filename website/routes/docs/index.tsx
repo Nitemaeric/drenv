@@ -111,6 +111,23 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: "Editor intelligence",
+    blurb:
+      "DragonRuby language server for your editor (experimental). Full feature list on the rule reference page.",
+    commands: [
+      {
+        name: "lsp",
+        desc:
+          "Start the language server (over stdio) — completions, hover docs, signatures, diagnostics, and navigation from your installed engine. Editors launch this for you; you don't run it by hand.",
+      },
+      {
+        name: "lsp doctor",
+        desc:
+          "Diagnose why the language server isn't working: whether a DragonRuby project is detected here, which engine resolves, whether drenv is on your PATH, and which editors are installed.",
+      },
+    ],
+  },
+  {
     title: "Managing drenv",
     blurb: "Keep the tool itself current.",
     commands: [

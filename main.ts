@@ -70,6 +70,7 @@ const actionRunner = (
 const ENGINE = "Engine management:";
 const PROJECT = "Project management:";
 const DEPENDENCIES = "Dependency management:";
+const EDITOR = "Editor intelligence:";
 const DRENV = "Managing drenv:";
 
 program
@@ -255,7 +256,7 @@ program
 const lspCommand = program
   .command("lsp")
   .description("Start the DragonRuby language server (experimental)")
-  .helpGroup(PROJECT)
+  .helpGroup(EDITOR)
   // LSP clients pass --stdio by convention (vscode-languageclient appends it).
   .option("--stdio", "communicate over stdio (the default and only transport)")
   .action(lsp);

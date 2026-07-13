@@ -4,7 +4,9 @@ import Nav from "../../../components/Nav.tsx";
 import Footer from "../../../components/Footer.tsx";
 import { latestVersion } from "../../../utils/version.ts";
 
-type Rule = { name: string; detail: string; tag?: string };
+// `since` defaults to 0.17.0 (when the language server first shipped); set it
+// only on rules added in a later release.
+type Rule = { name: string; detail: string; tag?: string; since?: string };
 type Group = { id: string; title: string; blurb: string; rules: Rule[] };
 
 const GROUPS: Group[] = [
@@ -41,6 +43,7 @@ const GROUPS: Group[] = [
       },
       {
         name: "Hash-literal keys",
+        since: "0.17.3",
         detail:
           "h = { hp: 100 } → h. completes hp — DragonRuby patches Hash so h.hp reads h[:hp]. Keys list before the Hash methods; string keys are skipped (not dot-accessible).",
       },
@@ -79,6 +82,7 @@ const GROUPS: Group[] = [
       },
       {
         name: "Bare constants (lexical lookup)",
+        since: "0.17.4",
         detail:
           "A bare constant resolves the way Ruby does — enclosing namespaces first, then top-level. Layout inside module Main sees Main::Layout / ::Layout, never an unrelated Conjuration::UI::Layout that merely shares the name.",
       },
@@ -202,6 +206,7 @@ const GROUPS: Group[] = [
       },
       {
         name: "Bare constants",
+        since: "0.17.4",
         detail:
           "Resolve lexically (enclosing namespaces, then top-level) — a constant not visible from the cursor jumps nowhere rather than to an unrelated namespace.",
       },
@@ -254,6 +259,12 @@ function GroupSection({ group }: { group: Group }) {
                   {rule.tag}
                 </span>
               )}
+              <span
+                class="ml-auto shrink-0 font-mono text-[11px] text-white/35"
+                title="Available since this release"
+              >
+                {rule.since ?? "0.17.0"}+
+              </span>
             </div>
             <p class="mt-1.5 text-sm leading-snug text-white/70">
               {rule.detail}
@@ -292,6 +303,10 @@ export default defineRoute(async () => {
             Every rule the drenv language server applies, by feature. All of it
             is derived from the DragonRuby version your project runs — new
             engine, new intelligence, automatically.
+          </p>
+          <p class="mt-3 max-w-2xl text-sm text-white/50">
+            The <span class="font-mono text-white/70">x.y.z+</span>{" "}
+            tag on each rule is the drenv release it arrived in.
           </p>
 
           <nav class="mt-8 flex flex-wrap gap-2">
