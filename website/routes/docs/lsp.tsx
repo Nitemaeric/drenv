@@ -348,7 +348,10 @@ export default function LspDocs() {
               </a>{" "}
               0.17.0 or newer first, so <code class="text-rose-400">drenv</code>
               {" "}
-              is on your <code class="text-rose-400">PATH</code>.
+              is on your{" "}
+              <code class="text-rose-400">PATH</code>. Not activating? Run{" "}
+              <code class="text-rose-400">drenv lsp doctor</code>{" "}
+              in your project.
             </p>
             <div class="space-y-6">
               <div class="rounded-xl border border-white/10 bg-zinc-900/50 p-5">

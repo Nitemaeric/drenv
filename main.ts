@@ -21,6 +21,7 @@ import remove from "./commands/remove.ts";
 import run from "./commands/run.ts";
 import selfUpdate from "./commands/self-update.ts";
 import lsp from "./lsp/server.ts";
+import doctor from "./lsp/doctor.ts";
 import versions from "./commands/versions.ts";
 
 import { getLatestDrenvVersion } from "./utils/latest-drenv-version.ts";
@@ -251,13 +252,18 @@ program
 
 // --- Managing drenv ---------------------------------------------------------
 
-program
+const lspCommand = program
   .command("lsp")
   .description("Start the DragonRuby language server (experimental)")
   .helpGroup(PROJECT)
   // LSP clients pass --stdio by convention (vscode-languageclient appends it).
   .option("--stdio", "communicate over stdio (the default and only transport)")
   .action(lsp);
+
+lspCommand
+  .command("doctor")
+  .description("Diagnose why the language server isn't working")
+  .action(actionRunner(doctor));
 
 program
   .command("self-update")

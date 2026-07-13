@@ -85,6 +85,12 @@ config lives in [`editors/nvim/README.md`](../editors/nvim/README.md).
 
 ## Troubleshooting
 
+Run **`drenv lsp doctor`** in your project first — it reports, exactly as the
+server sees them, whether a DragonRuby project is detected here, which engine
+resolves (in-workspace or drenv-managed, or none), whether `drenv` is on your
+`PATH`, and which editors it found. It diagnoses most "why isn't it working"
+cases in one command.
+
 - **"Server crashed" or "unknown command 'lsp'"?** Your drenv is older than
   0.17.0 — run `drenv self-update`.
 - **No engine intelligence?** Install a DragonRuby version first
