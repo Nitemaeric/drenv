@@ -61,10 +61,15 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
         return [...keyItems, ...typed];
       }
     }
+    // A member access on a receiver we can't type gets no completions — never
+    // the bare-identifier list below (every class/method name), which is
+    // meaningless after a dot.
+    return [];
   }
 
-  // Fall back to workspace definitions + engine top-levels. Docs attach only
-  // when unambiguous (same-named defs can document different things).
+  // Bare identifier (no receiver): workspace definitions + engine top-levels.
+  // Docs attach only when unambiguous (same-named defs can document
+  // different things).
   const items: unknown[] = [...ws.defs.entries()].map(([name, locs]) => {
     const docs = [...new Set(locs.map((l) => l.doc).filter(Boolean))];
     const documented = locs.find((l) => l.doc);

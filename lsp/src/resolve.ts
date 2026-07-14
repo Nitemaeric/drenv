@@ -396,9 +396,13 @@ export class Resolver implements ConstResolver {
 
   // Rule 3: every `@ivar = …` in the enclosing class body must agree on one
   // literal/`new` type; any untypeable or conflicting assignment -> null.
+  // A dangling completion dot collapses the enclosing class into an ERROR node
+  // (the def survives but its `class` parent doesn't), so fall back to the
+  // nearest statement scope where the assignment still parses.
   #typeIvar(receiver: Node): TypeGuess | null {
-    const cls = enclosingClass(receiver);
-    if (!cls) return null;
+    const scope = enclosingClass(receiver) ??
+      enclosingStatementScope(receiver);
+    if (!scope) return null;
     const name = receiver.text;
 
     const types: (string | null)[] = [];
@@ -414,7 +418,7 @@ export class Resolver implements ConstResolver {
       }
       for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
     };
-    scan(cls);
+    scan(scope);
 
     if (types.length === 0 || types.some((t) => t === null)) return null;
     const uniq = new Set(types);

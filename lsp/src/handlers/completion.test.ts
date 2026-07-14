@@ -261,4 +261,27 @@ describe("completion", () => {
     assert(labels.includes("play"));
     assert(labels.includes("shared"));
   });
+
+  it("types an ivar array through a dangling dot, not the def list", () => {
+    const u = "file:///test/ivar.rb";
+    const src =
+      "class Game\n  def setup\n    @players = [{ n: 1 }]\n    @players.\n  end\nend\n";
+    ctx.ws.indexFile(u, src);
+    const items = completion(ctx, u, afterDot(src, "@players"));
+    const labels = labelsOf(items);
+    assert(labels.includes("each"), "expected Array core on @players");
+    assert(labels.includes("map"));
+    // Not the workspace's class/method names (the old bare-fallback bug).
+    assert(!labels.includes("Animation"));
+    assert(!labels.includes("Game"));
+  });
+
+  it("returns nothing for a member access on an untypeable receiver", () => {
+    const u = "file:///test/untyped.rb";
+    // `mystery` is a bare method call — no known type — so `.` completes to
+    // nothing rather than dumping every workspace definition.
+    const src = "def go\n  mystery.\nend\n";
+    ctx.ws.indexFile(u, src);
+    assertEquals(completion(ctx, u, afterDot(src, "mystery")), []);
+  });
 });

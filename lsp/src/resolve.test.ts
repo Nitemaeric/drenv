@@ -509,6 +509,20 @@ describe("Resolver.receiverType — ivar (rule 3)", () => {
     const r = new Resolver(ws);
     assertEquals(r.receiverType(uri, receiverOf(ws, uri, "each")), null);
   });
+
+  it("types an @ivar even when a dangling dot collapsed the class", () => {
+    // `@players.` before `end` parses as `@players.end`, eating the keyword so
+    // the class becomes an ERROR node with no `class` ancestor. The assignment
+    // still parses; the statement-scope fallback finds it.
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      "class Game\n  def setup\n    @players = [{ n: 1 }]\n    @players.\n  end\nend\n",
+    );
+    const r = new Resolver(ws);
+    const dot = receiverOf(ws, uri, "end"); // the mis-parsed `@players.end`
+    assertEquals(r.receiverType(uri, dot)?.class, "Array");
+  });
 });
 
 describe("Resolver.receiverType — return dispatch (rule 4)", () => {
