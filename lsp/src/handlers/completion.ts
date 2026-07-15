@@ -67,15 +67,39 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
     return [];
   }
 
-  // Bare identifier (no receiver): workspace definitions + engine top-levels.
-  // Docs attach only when unambiguous (same-named defs can document
-  // different things).
-  const items: unknown[] = [...ws.defs.entries()].map(([name, locs]) => {
+  // Bare identifier (no receiver): only what Ruby could actually reach here —
+  // locals in scope, methods on `self` (the enclosing class chain) or defined
+  // at top level, and constants. NOT every method name in the workspace: a
+  // bare call can't reach an unrelated class's method.
+  const node = ws.fileTree(uri)?.rootNode.descendantForPosition({
+    row: pos.line,
+    column: pos.character,
+  });
+  const selfChain = node
+    ? classChain(ctx, resolver.enclosingNamespace(node))
+    : new Set<string>();
+
+  const items: unknown[] = resolver.localsInScope(uri, pos).map((name) => ({
+    label: name,
+    kind: 6, // Variable
+  }));
+
+  for (const [name, locs] of ws.defs) {
+    // Classes/modules are referenceable by name; methods only when reachable
+    // on self or from the top level (container-less), and never singletons
+    // (those are called as `Class.x`).
+    const isConst = locs.some((l) => l.kind === "class" || l.kind === "module");
+    const reachableMethod = locs.some((l) =>
+      l.kind === "method" && !l.singleton &&
+      (!l.container || selfChain.has(l.container))
+    );
+    if (!isConst && !reachableMethod) continue;
+
     const docs = [...new Set(locs.map((l) => l.doc).filter(Boolean))];
     const documented = locs.find((l) => l.doc);
-    return {
+    items.push({
       label: name,
-      kind: 3, // Function
+      kind: isConst ? 7 : 3, // Class : Function
       ...(docs.length === 1
         ? {
           documentation: {
@@ -84,8 +108,8 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
           },
         }
         : {}),
-    };
-  });
+    });
+  }
   for (const mod of ["Geometry", "Easing"]) {
     if (engine.api.has(mod)) items.push({ label: mod, kind: 9 }); // Module
   }

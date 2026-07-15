@@ -228,6 +228,36 @@ describe("completion", () => {
     );
   });
 
+  it("scopes a bare identifier to reachable methods, locals, and constants", () => {
+    const u = "file:///test/scope.rb";
+    const src = [
+      "class Camera",
+      "  def scroll_bg", // unrelated class method — NOT reachable from Main
+      "  end",
+      "end",
+      "module Main",
+      "  def tick args",
+      "    scene = pick",
+      "    x", // <- completing here
+      "  end",
+      "  def helper", // Main's own method — reachable on self
+      "  end",
+      "end",
+      "def top_helper", // top-level def — reachable everywhere
+      "end",
+      "",
+    ].join("\n");
+    ctx.ws.indexFile(u, src);
+    const labels = labelsOf(completion(ctx, u, { line: 7, character: 5 }));
+
+    assert(labels.includes("helper"), "self method");
+    assert(labels.includes("top_helper"), "top-level def");
+    assert(labels.includes("scene"), "local in scope");
+    assert(labels.includes("Camera"), "class constant");
+    // The unrelated class's method is not bare-callable from Main#tick.
+    assert(!labels.includes("scroll_bg"));
+  });
+
   it("completes core methods on a local typed by a literal (enemies = [])", () => {
     const items = completion(ctx, TYPED_URI, afterDot(TYPED, "enemies"));
     const labels = labelsOf(items);

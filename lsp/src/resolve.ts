@@ -210,6 +210,46 @@ export class Resolver implements ConstResolver {
     return hit;
   }
 
+  /** Parameter, block-parameter, and local-variable names of the method
+   * enclosing `pos` — the locals a bare identifier there could refer to. */
+  localsInScope(uri: string, pos: Pos): string[] {
+    const tree = this.#ws.fileTree(uri);
+    if (!tree) return [];
+    const node = tree.rootNode.descendantForPosition({
+      row: pos.line,
+      column: pos.character,
+    });
+    const scope = node &&
+      (enclosingMethod(node) ?? enclosingStatementScope(node));
+    if (!scope) return [];
+
+    const names = new Set<string>();
+    const nameOf = (child: Node): string | undefined =>
+      child.type === "identifier" ? child.text : child.childForFieldName("name")
+        ?.text;
+
+    const params = scope.childForFieldName("parameters");
+    for (let i = 0; i < (params?.namedChildCount ?? 0); i++) {
+      const n = nameOf(params!.namedChild(i)!);
+      if (n) names.add(n);
+    }
+    const scan = (n: Node) => {
+      if (n.type === "block_parameters") {
+        for (let i = 0; i < n.namedChildCount; i++) {
+          const name = nameOf(n.namedChild(i)!);
+          if (name) names.add(name);
+        }
+      }
+      if (n.type === "assignment") {
+        const left = n.childForFieldName("left");
+        if (left?.type === "identifier") names.add(left.text);
+      }
+      for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
+    };
+    scan(scope);
+    return [...names];
+  }
+
   /** Qualified class/module name -> Def, rebuilt when the def index moves. */
   namespaceIndex(): Map<string, Def> {
     if (this.#nsGeneration === this.#ws.generation) return this.#nsIndex;
