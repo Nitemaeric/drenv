@@ -1,6 +1,6 @@
 import { CORE_CLASSES, hashLiteralKeys, literalCoreClass } from "../resolve.ts";
 import type { Node } from "../ruby.ts";
-import type { Def, Pos } from "../types.ts";
+import type { Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
 
 export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
@@ -76,7 +76,7 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
     column: pos.character,
   });
   const selfChain = node
-    ? classChain(ctx, resolver.enclosingNamespace(node))
+    ? new Set(resolver.ancestors(resolver.enclosingNamespace(node)))
     : new Set<string>();
 
   const items: unknown[] = resolver.localsInScope(uri, pos).map((name) => ({
@@ -152,7 +152,7 @@ const receiverNode = (
 // name key); the container set is that same chain.
 const classMethodCompletions = (ctx: Ctx, qualified: string): unknown[] => {
   const { ws, yard } = ctx;
-  const containers = classChain(ctx, qualified);
+  const containers = new Set(ctx.resolver.ancestors(qualified));
   const items: unknown[] = [];
   for (const [name, locs] of ws.defs) {
     const methods = locs.filter((l) =>
@@ -175,22 +175,4 @@ const classMethodCompletions = (ctx: Ctx, qualified: string): unknown[] => {
     });
   }
   return items;
-};
-
-const classChain = (ctx: Ctx, qualified: string): Set<string> => {
-  const { resolver } = ctx;
-  const nsIndex = resolver.namespaceIndex();
-  const chain = new Set<string>();
-  let ns = qualified;
-  while (ns && !chain.has(ns)) {
-    chain.add(ns);
-    const def: Def | undefined = nsIndex.get(ns);
-    ns = def?.superclass
-      ? resolver.resolveConstName(
-        def.superclass,
-        ns.split("::").slice(0, -1).join("::"),
-      ) ?? ""
-      : "";
-  }
-  return chain;
 };

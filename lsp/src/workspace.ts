@@ -78,12 +78,13 @@ export class Workspace {
 
     const ATTRS = new Set(["attr_reader", "attr_writer", "attr_accessor"]);
 
-    const visit = (node: Node, container: string) => {
+    const visit = (node: Node, container: string, owner?: Def) => {
       let inner = container;
+      let innerOwner = owner;
       if (["method", "class", "module"].includes(node.type)) {
         const name = node.childForFieldName("name");
         if (name) {
-          addDef(name.text, {
+          const def: Def = {
             uri,
             range: nodeRange(name),
             kind: node.type as Def["kind"],
@@ -92,11 +93,36 @@ export class Workspace {
             superclass: node.type === "class"
               ? node.childForFieldName("superclass")?.namedChild(0)?.text
               : undefined,
-          });
+          };
+          addDef(name.text, def);
 
           if (node.type !== "method") {
             inner = container ? `${container}::${name.text}` : name.text;
+            innerOwner = def;
           }
+        }
+      }
+
+      // `include M` / `extend M` in a class or module body: mixin references
+      // recorded on the enclosing namespace's Def (owner), so ancestry lookups
+      // can follow them. `include` mixes instance methods in; `extend` mixes a
+      // module's instance methods in as the class's singleton methods.
+      if (
+        node.type === "call" && !node.childForFieldName("receiver") && owner &&
+        (node.childForFieldName("method")?.text === "include" ||
+          node.childForFieldName("method")?.text === "extend")
+      ) {
+        const kind = node.childForFieldName("method")!.text;
+        const argsNode = node.childForFieldName("arguments");
+        for (let i = 0; i < (argsNode?.namedChildCount ?? 0); i++) {
+          const arg = argsNode!.namedChild(i)!;
+          if (arg.type !== "constant" && arg.type !== "scope_resolution") {
+            continue;
+          }
+          const bag = kind === "include"
+            ? (owner.includes ??= [])
+            : (owner.extends ??= []);
+          bag.push(arg.text);
         }
       }
 
@@ -140,7 +166,7 @@ export class Workspace {
       }
 
       for (let i = 0; i < node.namedChildCount; i++) {
-        visit(node.namedChild(i)!, inner);
+        visit(node.namedChild(i)!, inner, innerOwner);
       }
     };
     visit(tree.rootNode, "");

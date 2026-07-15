@@ -74,6 +74,8 @@ export type Def = Loc & {
   doc?: string; // raw comment block, rendered lazily
   superclass?: string; // as written at the class site
   singleton?: boolean; // P3: `def self.x` — display `Class.x`, not `Class#x`
+  includes?: string[]; // `include X` module names in this body, as written
+  extends?: string[]; // `extend X` module names in this body, as written
 };
 export type Param = {
   label: string;
@@ -150,9 +152,10 @@ export class Workspace {
   fileText(uri: string): string | undefined;
   fileTree(uri: string): Tree | undefined;
   fileUris(): Iterable<string>;
-  /** The spike's indexFile visitor, verbatim behavior: containers, method/
-   * class/module defs, attr_reader/writer/accessor symbol defs, superclass
-   * capture, line-walk docAbove (comments are NOT reliable tree siblings). */
+  /** The spike's indexFile visitor: containers, method/class/module defs,
+   * attr_reader/writer/accessor symbol defs, superclass capture, `include`/
+   * `extend` module-name capture on the enclosing namespace, line-walk docAbove
+   * (comments are NOT reliable tree siblings). */
   indexFile(uri: string, text: string): Tree;
   /** Drops `fileText`/`fileTree` for `uri` and bumps `generation`. New
    * behavior (no spike caller): used by didClose only for buffers with no
@@ -205,8 +208,18 @@ export class Resolver implements ConstResolver {
   namespaceIndex(): Map<string, Def>;
   resolveConstName(path: string, container: string): string | null;
   resolveConst(path: string, container: string): Def | null;
-  /** Bare-call candidate ranking: enclosing class, superclass chain,
-   * same-file; null when no tier hits. */
+  /** A class's instance-method ancestry, nearest first: itself, the modules it
+   * `include`s (recursively), and its superclass chain (each expanded likewise);
+   * cycle-guarded. `extend` adds singleton methods, so it's excluded here (see
+   * methodsOf's singleton branch). */
+  ancestors(qualified: string): string[];
+  /** Instance (default) or singleton methods reachable on a class. Instance:
+   * walks `ancestors`. Singleton: each class in the superclass chain contributes
+   * its own `def self.x` methods plus the instance methods of modules it
+   * `extend`s. */
+  methodsOf(qualified: string, opts?: { singleton?: boolean }): Def[];
+  /** Bare-call candidate ranking: enclosing class + its ancestry (superclass
+   * chain and includes), then same-file; null when no tier hits. */
   contextCandidates(uri: string, pos: Pos, found: Def[]): Def[] | null;
 }
 ```

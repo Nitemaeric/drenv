@@ -107,6 +107,8 @@ export class Resolver implements ConstResolver {
   #nsGeneration = -1;
   #methodsByContainer = new Map<string, Def[]>();
   #methodsGeneration = -1;
+  #mixinIndex = new Map<string, { includes: string[]; extends: string[] }>();
+  #mixinGeneration = -1;
 
   constructor(ws: Workspace) {
     this.#ws = ws;
@@ -294,33 +296,89 @@ export class Resolver implements ConstResolver {
     });
     if (!node) return null;
 
-    let ns = this.enclosingNamespace(node);
-    const seen = new Set<string>();
-    while (ns && !seen.has(ns)) {
-      seen.add(ns);
+    for (const ns of this.ancestors(this.enclosingNamespace(node))) {
       const hits = found.filter((f) => f.container === ns);
       if (hits.length > 0) return hits;
-      ns = this.#superclassOf(ns);
     }
 
     const inFile = found.filter((f) => f.uri === uri);
     return inFile.length > 0 ? inFile : null;
   }
 
-  /** Instance (default) or singleton method Defs of `qualifiedClass` and every
-   * class up its superclass chain, nearest class first. The chain walk is class
-   * hierarchy, not an inference hop, so it's always permitted. Cached against
-   * `ws.generation`; cycle-guarded via `classChain`. */
+  /** Instance (default) or singleton method Defs reachable on `qualifiedClass`,
+   * nearest first. The walk is class hierarchy (superclass chain + `include`d /
+   * `extend`ed modules), not an inference hop, so it's always permitted. Cached
+   * against `ws.generation`; cycle-guarded. */
   methodsOf(qualifiedClass: string, opts: { singleton?: boolean } = {}): Def[] {
     this.#ensureMethodIndex();
-    const wantSingleton = opts.singleton === true;
     const out: Def[] = [];
-    for (const ns of this.#classChain(qualifiedClass)) {
-      for (const m of this.#methodsByContainer.get(ns) ?? []) {
-        if (!!m.singleton === wantSingleton) out.push(m);
+    if (opts.singleton === true) {
+      // `Class.x`: each class in the superclass chain contributes its own
+      // singleton methods plus the *instance* methods of the modules it
+      // `extend`s (extend adds a module's instance methods as class methods).
+      for (const ns of this.#classChain(qualifiedClass)) {
+        for (const m of this.#methodsByContainer.get(ns) ?? []) {
+          if (m.singleton) out.push(m);
+        }
+        for (const mod of this.#mixins(ns).extends) {
+          const q = this.resolveConstName(mod, ns);
+          for (const m of this.#methodsByContainer.get(q ?? "") ?? []) {
+            if (!m.singleton) out.push(m);
+          }
+        }
+      }
+    } else {
+      for (const ns of this.ancestors(qualifiedClass)) {
+        for (const m of this.#methodsByContainer.get(ns) ?? []) {
+          if (!m.singleton) out.push(m);
+        }
       }
     }
     return out;
+  }
+
+  /** Qualified names whose instance methods are reachable on an instance of
+   * `qualified`: itself, the modules it `include`s (recursively), and its
+   * superclass chain (each expanded likewise), nearest first. `extend` mixes in
+   * singleton methods, not instance methods, so it's excluded here. Cycle-
+   * guarded — reopened classes and mutual includes both terminate. */
+  ancestors(qualified: string): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const visit = (ns: string) => {
+      if (!ns || seen.has(ns)) return;
+      seen.add(ns);
+      out.push(ns);
+      for (const mod of this.#mixins(ns).includes) {
+        const q = this.resolveConstName(mod, ns);
+        if (q) visit(q);
+      }
+      visit(this.#superclassOf(ns));
+    };
+    visit(qualified);
+    return out;
+  }
+
+  /** `include` / `extend` module names declared on a namespace, unioned across
+   * every file that reopens it. Cached against `ws.generation`. */
+  #mixins(qualified: string): { includes: string[]; extends: string[] } {
+    if (this.#mixinGeneration !== this.#ws.generation) {
+      this.#mixinIndex = new Map();
+      for (const [name, locs] of this.#ws.defs) {
+        for (const loc of locs) {
+          if (loc.kind !== "class" && loc.kind !== "module") continue;
+          if (!loc.includes && !loc.extends) continue;
+          const q = loc.container ? `${loc.container}::${name}` : name;
+          const bag = this.#mixinIndex.get(q) ??
+            { includes: [], extends: [] };
+          if (loc.includes) bag.includes.push(...loc.includes);
+          if (loc.extends) bag.extends.push(...loc.extends);
+          this.#mixinIndex.set(q, bag);
+        }
+      }
+      this.#mixinGeneration = this.#ws.generation;
+    }
+    return this.#mixinIndex.get(qualified) ?? { includes: [], extends: [] };
   }
 
   /** One explicit hop of receiver typing (§3.2). Returns a core class or a
@@ -502,7 +560,7 @@ export class Resolver implements ConstResolver {
       const recv = receiver.childForFieldName("receiver");
       const recvType = recv ? this.#receiverType(uri, recv, false) : null;
       if (recvType) {
-        const chain = new Set(this.#classChain(recvType.class));
+        const chain = new Set(this.ancestors(recvType.class));
         const inChain = candidates.filter((c) => chain.has(c.container ?? ""));
         if (new Set(inChain.map((c) => c.container ?? "")).size === 1) {
           target = inChain[0];

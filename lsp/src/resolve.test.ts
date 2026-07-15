@@ -341,6 +341,79 @@ describe("Resolver.methodsOf", () => {
       ["draw", "base_move"],
     );
   });
+
+  it("mixes in an included module's instance methods (include)", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      "file:///m/mods.rb",
+      "module Movable\n  def move\n  end\nend\n",
+    );
+    ws.indexFile(
+      uri,
+      "class Base\n  def base_m\n  end\nend\n" +
+        "class Entity < Base\n  include Movable\n  def tick\n  end\nend\n",
+    );
+    const r = new Resolver(ws);
+    assertEquals(r.ancestors("Entity"), ["Entity", "Movable", "Base"]);
+    assertEquals(
+      r.methodsOf("Entity").map((d) => nameOfDef(ws, d)),
+      ["tick", "move", "base_m"],
+    );
+  });
+
+  it("resolves an included module by the class body's lexical scope", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "module Game",
+        "  module Movable",
+        "    def move",
+        "    end",
+        "  end",
+        "  class Entity",
+        "    include Movable", // bare `Movable` -> Game::Movable
+        "    def tick",
+        "    end",
+        "  end",
+        "end",
+      ].join("\n"),
+    );
+    const r = new Resolver(ws);
+    assertEquals(r.ancestors("Game::Entity"), [
+      "Game::Entity",
+      "Game::Movable",
+    ]);
+  });
+
+  it("unions includes across files that reopen the class", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile("file:///m/a.rb", "module A\n  def a\n  end\nend\n");
+    ws.indexFile("file:///m/b.rb", "module B\n  def b\n  end\nend\n");
+    ws.indexFile("file:///m/c1.rb", "class C\n  include A\nend\n");
+    ws.indexFile("file:///m/c2.rb", "class C\n  include B\nend\n");
+    const r = new Resolver(ws);
+    assertEquals(r.ancestors("C").sort(), ["A", "B", "C"]);
+  });
+
+  it("adds an extended module's instance methods as singleton methods (extend)", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      "file:///m/s.rb",
+      "module Serializable\n  def to_h\n  end\nend\n",
+    );
+    ws.indexFile(
+      uri,
+      "class Registry\n  extend Serializable\n  def self.reset\n  end\nend\n",
+    );
+    const r = new Resolver(ws);
+    assertEquals(
+      r.methodsOf("Registry", { singleton: true }).map((d) => nameOfDef(ws, d)),
+      ["reset", "to_h"],
+    );
+    // extend does not touch the instance side.
+    assertEquals(r.methodsOf("Registry"), []);
+  });
 });
 
 describe("Resolver.receiverType — literal (rule 1)", () => {

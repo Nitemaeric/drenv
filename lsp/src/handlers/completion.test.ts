@@ -306,6 +306,56 @@ describe("completion", () => {
     assert(!labels.includes("Game"));
   });
 
+  it("completes an included module's methods on a typed receiver", () => {
+    const u = "file:///test/mixin.rb";
+    const src = [
+      "module Movable",
+      "  # Moves the entity.",
+      "  def move",
+      "  end",
+      "end",
+      "class Entity",
+      "  include Movable",
+      "  def own_m",
+      "  end",
+      "end",
+      "class Game",
+      "  def setup",
+      "    @e = Entity.new",
+      "  end",
+      "  def go",
+      "    @e.move",
+      "  end",
+      "end",
+      "",
+    ].join("\n");
+    ctx.ws.indexFile(u, src);
+    const labels = labelsOf(completion(ctx, u, afterDot(src, "@e")));
+    assert(labels.includes("move"), "expected the included module's method");
+    assert(labels.includes("own_m"), "expected the class's own method");
+  });
+
+  it("scopes a bare identifier to include the class's mixed-in methods", () => {
+    const u = "file:///test/mixin-bare.rb";
+    const src = [
+      "module Movable",
+      "  def move",
+      "  end",
+      "end",
+      "class Entity",
+      "  include Movable",
+      "  def tick",
+      "    m", // <- completing here
+      "  end",
+      "end",
+      "",
+    ].join("\n");
+    ctx.ws.indexFile(u, src);
+    const labels = labelsOf(completion(ctx, u, { line: 7, character: 5 }));
+    assert(labels.includes("move"), "included module method reachable on self");
+    assert(labels.includes("tick"), "own method reachable on self");
+  });
+
   it("returns nothing for a member access on an untypeable receiver", () => {
     const u = "file:///test/untyped.rb";
     // `mystery` is a bare method call — no known type — so `.` completes to

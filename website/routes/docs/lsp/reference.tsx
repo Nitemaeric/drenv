@@ -39,7 +39,7 @@ const GROUPS: Group[] = [
       {
         name: "One-hop typed variables",
         detail:
-          "A local typed by its assignment completes its class: enemies = [] → Array; @anim = Animation.new → the workspace class's methods (inherited through the superclass chain); @ivar assignments that all agree on one type; and a method receiver typed by its unique @return (camera.ui. → the ui method's return class). Inference stops after one hop.",
+          "A local typed by its assignment completes its class: enemies = [] → Array; @anim = Animation.new → the workspace class's methods (inherited through the superclass chain and included modules); @ivar assignments that all agree on one type; and a method receiver typed by its unique @return (camera.ui. → the ui method's return class). Inference stops after one hop.",
       },
       {
         name: "Hash-literal keys",
@@ -48,9 +48,16 @@ const GROUPS: Group[] = [
           "h = { hp: 100 } → h. completes hp — DragonRuby patches Hash so h.hp reads h[:hp]. Keys list before the Hash methods; string keys are skipped (not dot-accessible).",
       },
       {
-        name: "Workspace definitions",
+        name: "Included & extended modules",
+        since: "0.19.0",
         detail:
-          "Methods, classes, modules, attr_reader/writer/accessor, and def self.x singletons across mygame/ and vendor/. A def's YARD doc rides the completion when the name is unambiguous.",
+          "include M mixes M's instance methods into the class — reachable on instances and as bare calls on self; extend M adds them as the class's singleton methods. Ancestry follows the superclass chain and includes recursively, unioned across every file that reopens the class.",
+      },
+      {
+        name: "Scoped bare identifiers",
+        since: "0.18.4",
+        detail:
+          "A bare call (no receiver) completes only what Ruby could reach there: locals in scope, methods on self (the enclosing class, its superclass chain, and included modules) or defined at top level, and constants — not every method name in the workspace. A def's YARD doc rides the completion when the name is unambiguous.",
       },
     ],
   },
@@ -213,7 +220,7 @@ const GROUPS: Group[] = [
       {
         name: "Methods",
         detail:
-          "A one-hop inferred receiver type narrows candidates to that class chain first, then the enclosing class, superclass chain, and same file — Ruby's dispatch order. def self.x singletons are navigable.",
+          "A one-hop inferred receiver type narrows candidates to that class's ancestry first (superclass chain and included modules), then the enclosing class's ancestry, then same file — Ruby's dispatch order. def self.x singletons are navigable.",
       },
       {
         name: "Vendored-twin dedup",

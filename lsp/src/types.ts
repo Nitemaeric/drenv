@@ -9,6 +9,8 @@ export type Def = Loc & {
   doc?: string; // raw comment block, rendered lazily
   superclass?: string; // as written at the class site
   singleton?: boolean; // P3: `def self.x` — display `Class.x`, not `Class#x`
+  includes?: string[]; // module names from `include X` in this body, as written
+  extends?: string[]; // module names from `extend X` in this body, as written
 };
 
 export type Param = {

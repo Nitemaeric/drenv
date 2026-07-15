@@ -103,7 +103,7 @@ export const hover = (ctx: Ctx, uri: string, pos: Pos): unknown => {
       if (!CORE_CLASSES.has(cls)) {
         const rel = (u: string) =>
           fromFileUrl(u).split("/").slice(-2).join("/");
-        const chain = classChain(ctx, cls);
+        const chain = new Set(resolver.ancestors(cls));
         const inChain = (ws.defs.get(word) ?? []).filter((f) =>
           f.kind === "method" && chain.has(f.container ?? "")
         );
@@ -213,22 +213,4 @@ const qualifiedName = (f: Def, word: string): string => {
     return `${f.container}${f.singleton ? "." : "#"}${word}`;
   }
   return `${f.container}::${word}`;
-};
-
-const classChain = (ctx: Ctx, qualified: string): Set<string> => {
-  const { resolver } = ctx;
-  const nsIndex = resolver.namespaceIndex();
-  const chain = new Set<string>();
-  let ns = qualified;
-  while (ns && !chain.has(ns)) {
-    chain.add(ns);
-    const def: Def | undefined = nsIndex.get(ns);
-    ns = def?.superclass
-      ? resolver.resolveConstName(
-        def.superclass,
-        ns.split("::").slice(0, -1).join("::"),
-      ) ?? ""
-      : "";
-  }
-  return chain;
 };
