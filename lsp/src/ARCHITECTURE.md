@@ -158,7 +158,8 @@ export class Workspace {
    * behavior (no spike caller): used by didClose only for buffers with no
    * on-disk copy — see server.ts. */
   removeFile(uri: string): void;
-  /** Indexes each root's `mygame/app`, `app`, and `lib`, then the vendored
+  /** Indexes all `.rb` under each root's `mygame/` (app/, lib/, or any layout)
+   * plus a top-level `app`/`lib`, excluding `vendor/`; then the vendored
    * packages under `<root>/mygame/vendor` and `<root>/vendor`, skipping twins
    * computed per vendor base (missing dirs are swallowed). `fileText`/
    * `fileTree` cover every scanned on-disk file, not just open buffers.

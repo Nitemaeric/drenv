@@ -424,6 +424,37 @@ describe("Workspace.scan", () => {
     }
   });
 
+  it("indexes Ruby anywhere under mygame/, not only mygame/app", async () => {
+    const root = await Deno.makeTempDir();
+    try {
+      const write = async (rel: string, text: string) => {
+        const path = join(root, rel);
+        await Deno.mkdir(join(path, ".."), { recursive: true });
+        await Deno.writeTextFile(path, text);
+      };
+      await write("mygame/app/main.rb", "def tick args\nend\n");
+      await write(
+        "mygame/lib/utils.rb",
+        "module Utils\n  def self.help\n  end\nend\n",
+      );
+      await write("mygame/scenes/title.rb", "class TitleScene\nend\n");
+      await write("mygame/vendor/pkg/dep.rb", "class Dep\nend\n");
+
+      const ws = new Workspace(ruby);
+      await ws.scan([root], new Set());
+
+      // The reported bug: a utility file under mygame/lib was never indexed.
+      assert(ws.defs.has("Utils"), "mygame/lib should be indexed");
+      assert(ws.defs.has("help"));
+      assert(ws.defs.has("TitleScene"), "any mygame/ subdir should be indexed");
+      // Vendored code is indexed once (the vendor pass), never doubled by the
+      // whole-tree walk.
+      assertEquals(ws.defs.get("Dep")?.length, 1);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  });
+
   it("swallows missing directories", async () => {
     const root = await Deno.makeTempDir();
     try {

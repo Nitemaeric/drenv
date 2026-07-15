@@ -173,9 +173,15 @@ export class Workspace {
   }
 
   async scan(roots: string[], indexedRoots: Set<string>): Promise<void> {
+    // Vendored packages are indexed separately (below) with twin-skips, so the
+    // whole-tree walks must exclude them.
+    const skipVendor = [/[/\\]vendor[/\\]/];
     for (const root of roots) {
-      for (const sub of ["mygame/app", "app", "lib"]) {
-        await this.#indexTree(join(root, sub));
+      // All Ruby under `mygame/` — app/, lib/, and whatever layout the project
+      // chose — not just mygame/app. `app`/`lib` at the root cover library
+      // repos and the case where mygame/ itself is opened as the workspace.
+      for (const sub of ["mygame", "app", "lib"]) {
+        await this.#indexTree(join(root, sub), skipVendor);
       }
 
       for (const base of [join(root, "mygame"), root]) {
@@ -205,10 +211,10 @@ export class Workspace {
     }
   }
 
-  async #indexTree(dir: string): Promise<void> {
+  async #indexTree(dir: string, skip: RegExp[] = []): Promise<void> {
     try {
       for await (
-        const entry of walk(dir, { exts: [".rb"], includeDirs: false })
+        const entry of walk(dir, { exts: [".rb"], includeDirs: false, skip })
       ) {
         this.indexFile(
           toFileUrl(entry.path).href,
