@@ -1,7 +1,7 @@
-import { copy } from "@std/fs";
 import { join } from "@std/path";
 
 import { versionsPath } from "../constants.ts";
+import { copyTree } from "../utils/copy-tree.ts";
 import {
   latestInstalledVersion,
   resolveVersionDir,
@@ -55,10 +55,9 @@ export default async function use(version?: string) {
   for await (const item of Deno.readDir(`${versionsPath}/${dir}`)) {
     if (item.name === "mygame") continue;
 
-    await copy(
+    await copyTree(
       `${versionsPath}/${dir}/${item.name}`,
       join(project.root, item.name),
-      { overwrite: true },
     );
   }
 

@@ -1,6 +1,5 @@
-import { copy } from "@std/fs";
-
 import { versionsPath } from "../constants.ts";
+import { copyTree } from "../utils/copy-tree.ts";
 import {
   latestInstalledVersion,
   resolveVersionDir,
@@ -61,7 +60,16 @@ export default async function newCommand(
     );
   }
 
-  await copy(`${versionsPath}/${dir}`, name);
+  // @std/fs copy refused an existing destination; keep that contract now that
+  // copyTree merges instead.
+  const exists = await Deno.stat(name).then(
+    () => true,
+    () => false,
+  );
+  if (exists) {
+    throw new Error(`drenv: '${name}' already exists`);
+  }
+  await copyTree(`${versionsPath}/${dir}`, name);
 
   if (!options.skipGitignore) {
     await Deno.writeTextFile(`${name}/.gitignore`, PROJECT_GITIGNORE);
