@@ -54,7 +54,7 @@ const GROUPS: Group[] = [
       {
         name: "new <name>",
         desc:
-          "Scaffold a new project on your newest install (or --version <v>), with a sensible .gitignore.",
+          "Scaffold a new project on your newest install (or --version <v>). Initializes git with a version-stamped first commit and a public- or private-repo .gitignore from DragonRuby's guidance (--skip-git / --skip-gitignore to opt out).",
       },
       {
         name: "use [version]",

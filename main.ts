@@ -143,6 +143,7 @@ program
     "DragonRuby version to use (defaults to the latest installed)",
   )
   .option("--skip-gitignore", "Don't generate a .gitignore in the new project")
+  .option("--skip-git", "Don't initialize a git repository")
   .description("Create a new DragonRuby project")
   .helpGroup(PROJECT)
   .action(actionRunner(newCommand));
