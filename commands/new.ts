@@ -1,6 +1,11 @@
 import { versionsPath } from "../constants.ts";
 import { copyTree } from "../utils/copy-tree.ts";
 import {
+  askTemplate,
+  PRIVATE_GITIGNORE,
+  PUBLIC_GITIGNORE,
+} from "../utils/gitignore.ts";
+import {
   latestInstalledVersion,
   resolveVersionDir,
 } from "../utils/installed-versions.ts";
@@ -17,51 +22,27 @@ export class NotInstalled extends Error {
   }
 }
 
-// Both templates follow the engine's own guidance in
-// docs/guides/starting-a-new-project.md: a public repo must not redistribute
-// the engine; a private/commercial repo commits everything — engine, docs/,
-// samples/, builds/ — so the game keeps working with its exact engine version.
-const PUBLIC_GITIGNORE = `.DS_Store
-
-# DragonRuby binaries (re-added by drenv new / drenv use)
-dragonruby
-dragonruby.exe
-dragonruby-publish
-dragonruby-publish.exe
-dragonruby-bind
-dragonruby-bind.exe
-dragonruby-firestarter
-dragonruby-httpd
-
-# Build and runtime artifacts
-/tmp/
-/builds/
-/logs/
-/.dragonruby/
-
-# Bundled DragonRuby docs and samples
-/docs/
-/samples/
-`;
-
-const PRIVATE_GITIGNORE = `.DS_Store
-
-# Runtime artifacts. Everything else — engine binaries, docs/, samples/,
-# builds/ — is committed, per DragonRuby's guidance for private repos.
-/tmp/
-/logs/
-`;
-
 type NewOptions = {
   version?: string;
   skipGitignore?: boolean;
   skipGit?: boolean;
+  public?: boolean;
+  private?: boolean;
 };
 
 export default async function newCommand(
   name: string,
   options: NewOptions = {},
 ) {
+  if (options.public && options.private) {
+    throw new Error("drenv: --public and --private are mutually exclusive");
+  }
+  if (options.skipGitignore && (options.public || options.private)) {
+    throw new Error(
+      "drenv: --skip-gitignore conflicts with --public/--private",
+    );
+  }
+
   // Default to the newest installed version; --version picks a specific one.
   const dir = options.version
     ? await resolveVersionDir(options.version)
@@ -88,11 +69,16 @@ export default async function newCommand(
   await copyTree(`${versionsPath}/${dir}`, name);
 
   if (!options.skipGitignore) {
-    let template = PUBLIC_GITIGNORE;
-    if (!options.skipGit) {
-      const answer = prompt("drenv: Will this be a public repository? y/N (N)");
-      const isPublic = (answer ?? "").trim().toLowerCase().startsWith("y");
-      template = isPublic ? PUBLIC_GITIGNORE : PRIVATE_GITIGNORE;
+    let template: string;
+    if (options.public) {
+      template = PUBLIC_GITIGNORE;
+    } else if (options.private) {
+      template = PRIVATE_GITIGNORE;
+    } else if (options.skipGit) {
+      // No repo to ask about; the engine-safe template is the safe default.
+      template = PUBLIC_GITIGNORE;
+    } else {
+      template = askTemplate();
     }
     await Deno.writeTextFile(`${name}/.gitignore`, template);
   }

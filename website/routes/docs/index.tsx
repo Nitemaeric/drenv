@@ -62,6 +62,11 @@ const GROUPS: Group[] = [
           "Switch the current project to another installed version. Defaults to your newest install.",
       },
       {
+        name: "gitignore",
+        desc:
+          "Generate a .gitignore for an existing project from DragonRuby's public- or private-repo guidance (--public / --private to skip the prompt). Asks before overwriting.",
+      },
+      {
         name: "version",
         desc: "Print the current project's DragonRuby version.",
       },

@@ -13,6 +13,7 @@ import install from "./commands/install.ts";
 import use from "./commands/use.ts";
 import version from "./commands/version.ts";
 import newCommand from "./commands/new.ts";
+import gitignoreCommand from "./commands/gitignore.ts";
 import build from "./commands/build.ts";
 import publish from "./commands/publish.ts";
 import register from "./commands/register.ts";
@@ -144,6 +145,14 @@ program
   )
   .option("--skip-gitignore", "Don't generate a .gitignore in the new project")
   .option("--skip-git", "Don't initialize a git repository")
+  .option(
+    "--public",
+    "Public repository: .gitignore keeps the engine out (skips the prompt)",
+  )
+  .option(
+    "--private",
+    "Private repository: commit everything, engine included (skips the prompt)",
+  )
   .description("Create a new DragonRuby project")
   .helpGroup(PROJECT)
   .action(actionRunner(newCommand));
@@ -157,6 +166,20 @@ program
   .description("Switch the current project to a DragonRuby version")
   .helpGroup(PROJECT)
   .action(actionRunner(use));
+
+program
+  .command("gitignore")
+  .option(
+    "--public",
+    "Public repository: .gitignore keeps the engine out (skips the prompt)",
+  )
+  .option(
+    "--private",
+    "Private repository: commit everything, engine included (skips the prompt)",
+  )
+  .description("Generate a .gitignore for the current project")
+  .helpGroup(PROJECT)
+  .action(actionRunner(gitignoreCommand));
 
 program
   .command("version")

@@ -201,5 +201,75 @@ describe("new", () => {
       assert(!await exists(join(dest, ".gitignore")));
       await Deno.remove(tmp, { recursive: true });
     });
+
+    it("--public and --private pick a template without prompting", async () => {
+      const tmp = await Deno.makeTempDir({ prefix: "drenv-new-" });
+      let prompted = false;
+      globalThis.prompt = () => {
+        prompted = true;
+        return "";
+      };
+
+      await newCommand(join(tmp, "pub"), { version: "99.99", public: true });
+      await newCommand(join(tmp, "priv"), { version: "99.99", private: true });
+
+      assert(!prompted, "flags must suppress the prompt");
+      const pub = await Deno.readTextFile(join(tmp, "pub", ".gitignore"));
+      assertStringIncludes(pub, "/samples/");
+      const priv = await Deno.readTextFile(join(tmp, "priv", ".gitignore"));
+      assert(!priv.includes("/samples/"));
+      assertStringIncludes(priv, "/logs/");
+      await Deno.remove(tmp, { recursive: true });
+    });
+
+    it("an explicit flag beats --skip-git's public default", async () => {
+      const tmp = await Deno.makeTempDir({ prefix: "drenv-new-" });
+      const dest = join(tmp, "proj");
+
+      await newCommand(dest, {
+        version: "99.99",
+        skipGit: true,
+        private: true,
+      });
+
+      const gitignore = await Deno.readTextFile(join(dest, ".gitignore"));
+      assert(!gitignore.includes("dragonruby"));
+      assert(!(await exists(join(dest, ".git"))));
+      await Deno.remove(tmp, { recursive: true });
+    });
+
+    it("rejects --public with --private", async () => {
+      const tmp = await Deno.makeTempDir({ prefix: "drenv-new-" });
+
+      await assertRejects(
+        () =>
+          newCommand(join(tmp, "proj"), {
+            version: "99.99",
+            public: true,
+            private: true,
+          }),
+        Error,
+        "mutually exclusive",
+      );
+
+      await Deno.remove(tmp, { recursive: true });
+    });
+
+    it("rejects --skip-gitignore with a template flag", async () => {
+      const tmp = await Deno.makeTempDir({ prefix: "drenv-new-" });
+
+      await assertRejects(
+        () =>
+          newCommand(join(tmp, "proj"), {
+            version: "99.99",
+            skipGitignore: true,
+            public: true,
+          }),
+        Error,
+        "conflicts",
+      );
+
+      await Deno.remove(tmp, { recursive: true });
+    });
   });
 });
