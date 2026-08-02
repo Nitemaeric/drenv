@@ -14,6 +14,11 @@ dragonruby-bind.exe
 dragonruby-firestarter
 dragonruby-httpd
 
+# Pro iOS toolchain and C-extension headers
+/dragonruby-ios.app/
+/dragonruby-ios-simulator.app/
+/include/
+
 # Build and runtime artifacts
 /tmp/
 /builds/
@@ -23,6 +28,21 @@ dragonruby-httpd
 # Bundled DragonRuby docs and samples
 /docs/
 /samples/
+
+# Engine-distribution files (re-added by drenv new / drenv use)
+/ctags-emacs
+/ctags-vim
+/CHANGELOG-CURR.txt
+/CHANGELOG-PREV.txt
+/README.txt
+/VERSION.txt
+/eula.txt
+/open-source-licenses.txt
+/console-logo.png
+/dragonruby-controller.png
+/dragonruby.png
+/font.ttf
+/tiny.ttf
 `;
 
 export const PRIVATE_GITIGNORE = `.DS_Store

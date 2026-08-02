@@ -35,6 +35,11 @@ describe("gitignore", () => {
     const content = await Deno.readTextFile("./.gitignore");
     assertStringIncludes(content, "/samples/");
     assertStringIncludes(content, "dragonruby");
+    // Pro iOS toolchain, headers, and distribution files are engine too.
+    assertStringIncludes(content, "/dragonruby-ios.app/");
+    assertStringIncludes(content, "/dragonruby-ios-simulator.app/");
+    assertStringIncludes(content, "/include/");
+    assertStringIncludes(content, "/eula.txt");
     assertStringIncludes(message ?? "", "public repository template");
   });
 
