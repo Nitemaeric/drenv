@@ -59,6 +59,8 @@ const actionRunner = (
       }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
+      // Fail the process so scripts and CI see the error, not a silent 0.
+      Deno.exitCode = 1;
     } finally {
       if (!options.skipUpdateCheck) {
         await printDrenvUpdateNotice();

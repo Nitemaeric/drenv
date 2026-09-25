@@ -395,6 +395,58 @@ describe("bundler (nested dependencies)", () => {
     assertEquals(restored.replaceAll("\r\n", "\n"), "# timer\n");
   });
 
+  it("restores a missing top-level remote dep at its locked ref on reconcile", async () => {
+    // An unpinned top-level remote dep, like `github = "owner/repo"`.
+    const timer = await makeLib(tmp, "timer");
+    await git(["init", "-b", "main"], timer);
+    await git(["add", "."], timer);
+    await git(["commit", "-m", "v1"], timer);
+
+    const project = await makeGame(
+      tmp,
+      `[dependencies.timer]\ngit = "${timer.replaceAll("\\", "/")}"\n`,
+    );
+    await bundle(project);
+    const lockedRef = (await readLock(project.lockPath))?.dependencies.find(
+      (d) => d.name === "timer",
+    )?.ref;
+    assertExists(lockedRef);
+
+    // Upstream advances, then the vendored copy goes missing (fresh clone).
+    await Deno.writeTextFile(join(timer, "lib", "timer.rb"), "# v2\n");
+    await git(["add", "."], timer);
+    await git(["commit", "-m", "v2"], timer);
+    const vendored = join(project.mygame, "vendor", "timer", "timer.rb");
+    await Deno.remove(join(project.mygame, "vendor", "timer"), {
+      recursive: true,
+    });
+
+    await reconcile(project);
+
+    // Restored at the locked revision, not upstream HEAD, and the lock is
+    // untouched — vendor/ and the lock must agree.
+    assertEquals(
+      (await Deno.readTextFile(vendored)).replaceAll("\r\n", "\n"),
+      "# timer\n",
+    );
+    assertEquals(
+      (await readLock(project.lockPath))?.dependencies.find(
+        (d) => d.name === "timer",
+      )?.ref,
+      lockedRef,
+    );
+
+    // A frozen reconcile (what build/publish run) accepts the restored copy.
+    await Deno.remove(join(project.mygame, "vendor", "timer"), {
+      recursive: true,
+    });
+    await reconcile(project, { frozen: true });
+    assertEquals(
+      (await Deno.readTextFile(vendored)).replaceAll("\r\n", "\n"),
+      "# timer\n",
+    );
+  });
+
   it("drops orphaned packages when a parent stops depending on them", async () => {
     await makeLib(tmp, "dragon_input");
     const conjDir = await makeLib(

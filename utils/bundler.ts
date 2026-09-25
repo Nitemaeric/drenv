@@ -347,8 +347,10 @@ export const reconcile = async (
   const ctx = context(project, log);
 
   for (const locked of lock.dependencies) {
-    // Top-level entries use the manifest's spec; transitive entries are
-    // reconstructed from the lock (pinned to their exact resolved ref).
+    // Path deps sync from the manifest's spec (their source is mutable), or
+    // from the lock for transitive ones. Remote deps are always restored from
+    // the lock, pinned to the exact resolved ref: an unpinned manifest spec
+    // would fetch upstream's latest and leave vendor/ out of step with the lock.
     const spec = manifest.dependencies.find((d) => d.name === locked.name) ??
       lockedToSpec(locked);
     const dir = join(project.mygame, "vendor", locked.name);
@@ -356,7 +358,7 @@ export const reconcile = async (
     if (sourceKind(spec) === "path") {
       await vendorDependency(spec, ctx);
     } else if (!await matches(dir, locked.integrity)) {
-      await vendorDependency(spec, ctx);
+      await vendorDependency(lockedToSpec(locked), ctx);
 
       if (frozen && !await matches(dir, locked.integrity)) {
         throw new Error(

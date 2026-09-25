@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
-import { assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
 
@@ -44,5 +44,18 @@ describe("build", () => {
     assertStringIncludes(args, "--only-package");
     assertStringIncludes(args, "--verbose");
     assertStringIncludes(args, "mygame");
+  });
+
+  it("doesn't append the game dir a second time when it's forwarded", async () => {
+    if (Deno.build.os === "windows") return; // uses a unix shell shim
+
+    const binary = join(root, "dragonruby-publish");
+    await Deno.writeTextFile(binary, '#!/bin/sh\necho "$@" > args.txt\n');
+    await Deno.chmod(binary, 0o755);
+
+    await build(["--platforms=android", "mygame/"]);
+
+    const args = (await Deno.readTextFile(join(root, "args.txt"))).trim();
+    assertEquals(args, "--only-package --platforms=android mygame/");
   });
 });

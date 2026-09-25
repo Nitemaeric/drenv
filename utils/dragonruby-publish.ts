@@ -1,5 +1,5 @@
 import { exists } from "@std/fs";
-import { join } from "@std/path";
+import { join, resolve } from "@std/path";
 
 import { findProject } from "./project.ts";
 import { reconcile } from "./bundler.ts";
@@ -7,7 +7,8 @@ import { BUNDLE_REQUIRE } from "./bundle-file.ts";
 
 /**
  * Reconciles dependencies against the lockfile (frozen), then runs the project's
- * `dragonruby-publish` binary with `flags`, appending the game directory last.
+ * `dragonruby-publish` binary with `flags`, appending the game directory last
+ * (unless `flags` already name it).
  * Shared by `drenv publish` (ships) and `drenv build` (`--only-package`). Exits
  * with dragonruby-publish's code on failure.
  */
@@ -42,9 +43,15 @@ export const runDragonrubyPublish = async (
     throw new Error(`drenv: dragonruby-publish binary not found at ${binary}`);
   }
 
-  // dragonruby-publish takes the game directory last: [flags...] GAME_DIRECTORY
+  // dragonruby-publish takes the game directory last: [flags...] GAME_DIRECTORY.
+  // Append it unless the caller already passed it — a second one is a usage
+  // error.
+  const gameDir = resolve(project.mygame);
+  const passesGameDir = flags.some((flag) =>
+    !flag.startsWith("-") && resolve(project.root, flag) === gameDir
+  );
   const { code } = await new Deno.Command(binary, {
-    args: [...flags, "mygame"],
+    args: passesGameDir ? flags : [...flags, "mygame"],
     cwd: project.root,
     stdin: "inherit",
     stdout: "inherit",
