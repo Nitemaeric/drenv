@@ -252,6 +252,42 @@ export class Resolver implements ConstResolver {
     return [...names];
   }
 
+  /** Instance (`@x`) or class (`@@x`) variable names reachable at `pos`: every
+   * one written or read in a body of the enclosing class/module or its
+   * ancestors, across all workspace files (classes reopen). Top-level code
+   * shares the `main` object, so it sees every top-level variable. The node
+   * under the cursor (the partially typed name) is skipped. */
+  variablesInScope(
+    uri: string,
+    pos: Pos,
+    kind: "instance_variable" | "class_variable",
+  ): string[] {
+    const tree = this.#ws.fileTree(uri);
+    if (!tree) return [];
+    const here = tree.rootNode.descendantForPosition({
+      row: pos.line,
+      column: pos.character,
+    });
+    const ns = here ? this.enclosingNamespace(here) : "";
+    const visible = new Set(ns ? this.ancestors(ns) : [""]);
+
+    const names = new Set<string>();
+    for (const fileUri of this.#ws.fileUris()) {
+      const root = this.#ws.fileTree(fileUri)?.rootNode;
+      if (!root) continue;
+      for (const n of root.descendantsOfType(kind)) {
+        if (!n) continue;
+        const typing = fileUri === uri &&
+          n.startPosition.row === pos.line &&
+          n.startPosition.column <= pos.character &&
+          n.endPosition.column >= pos.character;
+        if (typing) continue;
+        if (visible.has(this.enclosingNamespace(n))) names.add(n.text);
+      }
+    }
+    return [...names];
+  }
+
   /** Qualified class/module name -> Def, rebuilt when the def index moves. */
   namespaceIndex(): Map<string, Def> {
     if (this.#nsGeneration === this.#ws.generation) return this.#nsIndex;
@@ -436,7 +472,10 @@ export class Resolver implements ConstResolver {
     if (receiver.type === "identifier") {
       return this.#typeLocal(uri, receiver);
     }
-    if (receiver.type === "instance_variable") {
+    if (
+      receiver.type === "instance_variable" ||
+      receiver.type === "class_variable"
+    ) {
       return this.#typeIvar(receiver);
     }
     if (receiver.type === "call" && allowReturn) {
@@ -492,8 +531,9 @@ export class Resolver implements ConstResolver {
     return null;
   }
 
-  // Rule 3: every `@ivar = …` in the enclosing class body must agree on one
-  // literal/`new` type; any untypeable or conflicting assignment -> null.
+  // Rule 3: every `@ivar = …` (or `@@cvar = …`) in the enclosing class body
+  // must agree on one literal/`new` type; any untypeable or conflicting
+  // assignment -> null.
   // A dangling completion dot collapses the enclosing class into an ERROR node
   // (the def survives but its `class` parent doesn't), so fall back to the
   // nearest statement scope where the assignment still parses.
@@ -508,7 +548,7 @@ export class Resolver implements ConstResolver {
     const scan = (n: Node) => {
       if (n.type === "assignment") {
         const left = n.childForFieldName("left");
-        if (left?.type === "instance_variable" && left.text === name) {
+        if (left?.type === receiver.type && left.text === name) {
           const rhs = n.childForFieldName("right");
           types.push(rhs ? this.#assignedClass(rhs, left) : null);
           if (rhs) rhsNodes.push(rhs);

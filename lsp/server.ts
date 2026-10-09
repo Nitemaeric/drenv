@@ -132,7 +132,7 @@ export default async function lsp() {
 
     const capabilities: Record<string, unknown> = {
       textDocumentSync: { openClose: true, change: 2 }, // incremental
-      completionProvider: { triggerCharacters: ["."] },
+      completionProvider: { triggerCharacters: [".", "@"] },
       signatureHelpProvider: { triggerCharacters: ["(", ","] },
       hoverProvider: true,
       definitionProvider: true,

@@ -356,6 +356,82 @@ describe("completion", () => {
     assert(labels.includes("tick"), "own method reachable on self");
   });
 
+  it("completes instance variables of the class chain after `@`", () => {
+    const u = "file:///test/ivars.rb";
+    const reopened = "file:///test/ivars-reopen.rb";
+    const src = [
+      "class Actor",
+      "  def init",
+      "    @hp = 10",
+      "  end",
+      "end",
+      "class Player < Actor",
+      "  def setup",
+      "    @speed = 2",
+      "  end",
+      "  def tick",
+      "    @", // <- completing here (line 10)
+      "    @sp", // <- and here (line 11)
+      "  end",
+      "end",
+      "class Other",
+      "  def x",
+      "    @unrelated = 1",
+      "  end",
+      "end",
+      "",
+    ].join("\n");
+    ctx.ws.indexFile(u, src);
+    ctx.ws.indexFile(
+      reopened,
+      "class Player\n  def more\n    @score\n  end\nend\n",
+    );
+
+    const bare = labelsOf(completion(ctx, u, { line: 10, character: 5 }));
+    assert(bare.includes("@speed"), "own ivar");
+    assert(bare.includes("@hp"), "superclass ivar");
+    assert(bare.includes("@score"), "ivar from a reopened class body");
+    assert(!bare.includes("@unrelated"), "another class's ivar");
+    assert(!bare.includes("tick"), "not the bare-identifier list");
+
+    const partial = completion(ctx, u, { line: 11, character: 7 });
+    assert(!labelsOf(partial).includes("@sp"), "not the name being typed");
+    // deno-lint-ignore no-explicit-any
+    const speed = partial.find((i) => (i as any).label === "@speed") as any;
+    assertEquals(speed.textEdit.range, {
+      start: { line: 11, character: 4 },
+      end: { line: 11, character: 7 },
+    });
+    assertEquals(speed.textEdit.newText, "@speed");
+  });
+
+  it("completes class variables after `@@`, not instance variables", () => {
+    const u = "file:///test/cvars.rb";
+    const src = [
+      "class Counter",
+      "  @@count = 0",
+      "  def bump",
+      "    @total = 1",
+      "    @@co",
+      "  end",
+      "end",
+      "",
+    ].join("\n");
+    ctx.ws.indexFile(u, src);
+    const labels = labelsOf(completion(ctx, u, { line: 4, character: 8 }));
+    assertEquals(labels, ["@@count"]);
+  });
+
+  it("completes a class's methods on a typed class variable (@@anim.)", () => {
+    const u = "file:///test/cvar-typed.rb";
+    const src =
+      "class Game\n  @@anim = Animation.new\n  def go\n    @@anim.play\n  end\nend\n";
+    ctx.ws.indexFile(u, src);
+    const labels = labelsOf(completion(ctx, u, afterDot(src, "@@anim")));
+    assert(labels.includes("play"));
+    assert(labels.includes("shared"));
+  });
+
   it("returns nothing for a member access on an untypeable receiver", () => {
     const u = "file:///test/untyped.rb";
     // `mystery` is a bare method call — no known type — so `.` completes to

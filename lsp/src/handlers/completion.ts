@@ -22,6 +22,24 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
     }));
   };
 
+  // `@`/`@@` sigil: instance or class variables of the enclosing class chain.
+  // The edit range spans the sigil so clients whose word pattern stops at `@`
+  // still filter and replace the whole name.
+  const sigil = prefix.match(/(?<![\w@])(@@?)\w*$/);
+  if (sigil) {
+    const start = pos.character - sigil[0].length;
+    const kind = sigil[1] === "@@" ? "class_variable" : "instance_variable";
+    return resolver.variablesInScope(uri, pos, kind).map((name) => ({
+      label: name,
+      kind: 6, // Variable
+      filterText: name,
+      textEdit: {
+        range: { start: { line: pos.line, character: start }, end: pos },
+        newText: name,
+      },
+    }));
+  }
+
   const chain = prefix.match(/([A-Za-z_][\w.]*)\.\s*[\w]*$/)?.[1];
   if (chain) {
     const entries = engine.api.get(chain);
