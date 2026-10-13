@@ -17,6 +17,11 @@ import { completion } from "./src/handlers/completion.ts";
 import { hover } from "./src/handlers/hover.ts";
 import { definition, references } from "./src/handlers/navigation.ts";
 import { signatureHelp } from "./src/handlers/signature.ts";
+import {
+  documentHighlight,
+  documentSymbols,
+  workspaceSymbols,
+} from "./src/handlers/symbols.ts";
 import { diagnostics } from "./src/handlers/diagnostics.ts";
 import {
   manifestCompletion,
@@ -137,6 +142,9 @@ export default async function lsp() {
       hoverProvider: true,
       definitionProvider: true,
       referencesProvider: true,
+      documentSymbolProvider: true,
+      workspaceSymbolProvider: true,
+      documentHighlightProvider: true,
     };
     // Our internals are UTF-16 already; only advertise it when the client asks.
     if (Array.isArray(params.capabilities?.general?.positionEncodings)) {
@@ -350,6 +358,26 @@ export default async function lsp() {
         return conn.respond(
           id!,
           ctx ? references(ctx, params.textDocument.uri, params.position) : [],
+        );
+
+      case "textDocument/documentSymbol":
+        return conn.respond(
+          id!,
+          ctx ? documentSymbols(ctx, params.textDocument.uri) : [],
+        );
+
+      case "workspace/symbol":
+        return conn.respond(
+          id!,
+          ctx ? workspaceSymbols(ctx, params.query ?? "") : [],
+        );
+
+      case "textDocument/documentHighlight":
+        return conn.respond(
+          id!,
+          ctx
+            ? documentHighlight(ctx, params.textDocument.uri, params.position)
+            : [],
         );
 
       case "shutdown":
