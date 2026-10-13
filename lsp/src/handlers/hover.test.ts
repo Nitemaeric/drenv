@@ -122,6 +122,36 @@ describe("hover — instance/class variable (attr-doc borrowing)", () => {
   });
 });
 
+const CONSTS = [
+  "MAX = 9", // 0
+  "module Game", // 1
+  "  TILE = 16", // 2
+  "  class Base", // 3
+  "    GRAVITY = 0.5", // 4
+  "  end", // 5
+  "  class Player < Base", // 6
+  "    # Top speed.", // 7
+  "    SPEED = 4", // 8
+  "    def t", // 9
+  "      [TILE, GRAVITY, MAX]", // 10
+  "    end", // 11
+  "  end", // 12
+  "end", // 13
+  "Game::Player::SPEED", // 14
+  "",
+].join("\n");
+
+describe("hover — constants", () => {
+  it("shows a constant's qualified name, value and doc", () => {
+    const ctx = ctxOf({ "k.rb": CONSTS });
+    const v = value(hover(ctx, uri("k.rb"), at(CONSTS, "SPEED", 14)));
+    assert(v.includes("**Game::Player::SPEED** = `4`"), v);
+    assert(v.includes("Top speed."), v);
+    const inherited = value(hover(ctx, uri("k.rb"), at(CONSTS, "GRAVITY", 10)));
+    assert(inherited.includes("**Game::Base::GRAVITY** = `0.5`"), inherited);
+  });
+});
+
 describe("hover — engine api", () => {
   it("shows engine doc when receiver.word appears on the line", async () => {
     const dir = join(base, "engine", "7.11");

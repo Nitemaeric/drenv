@@ -1,6 +1,6 @@
 import { fromFileUrl } from "@std/path";
 
-import { CORE_CLASSES, literalCoreClass } from "../resolve.ts";
+import { constPathAt, CORE_CLASSES, literalCoreClass } from "../resolve.ts";
 import type { Def, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
 
@@ -137,8 +137,9 @@ export const hover = (ctx: Ctx, uri: string, pos: Pos): unknown => {
       pos.character <= f.range.end.character
     );
     if (at) {
+      const value = at.value ? ` = \`${at.value}\`` : "";
       return md(
-        `**${qualified(at)}** — defined in ${rel(at.uri)}` +
+        `**${qualified(at)}**${value} — defined in ${rel(at.uri)}` +
           (at.doc
             ? `\n\n---\n\n${yard.render(at.doc, at.container ?? "")}`
             : ""),
@@ -149,17 +150,16 @@ export const hover = (ctx: Ctx, uri: string, pos: Pos): unknown => {
     // then top-level) — never an unrelated namespace that merely shares the
     // name. `Layout` inside `Main` sees `Main::Layout` / `::Layout`, not
     // `Conjuration::UI::Layout`.
-    if (
-      nodeAt?.type === "constant" && nodeAt.parent?.type !== "scope_resolution"
-    ) {
+    if (nodeAt?.type === "constant") {
       const def = resolver.resolveConst(
-        word,
+        constPathAt(nodeAt),
         resolver.enclosingNamespace(nodeAt),
       );
       if (!def) return null;
       const key = def.container ? `${def.container}::${word}` : word;
+      const value = def.value ? ` = \`${def.value}\`` : "";
       return md(
-        `**${key}** — defined in ${rel(def.uri)}` +
+        `**${key}**${value} — defined in ${rel(def.uri)}` +
           (def.doc
             ? `\n\n---\n\n${yard.render(def.doc, def.container ?? "")}`
             : ""),

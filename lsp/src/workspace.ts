@@ -194,6 +194,22 @@ export class Workspace {
         }
       }
 
+      // `SCREEN_W = 1280` defines a constant in the enclosing namespace.
+      if (node.type === "assignment") {
+        const left = node.childForFieldName("left");
+        if (left?.type === "constant") {
+          const rhs = node.childForFieldName("right")?.text.split("\n")[0];
+          addDef(left.text, {
+            uri,
+            range: nodeRange(left),
+            kind: "constant",
+            container: container || undefined,
+            doc: docAbove(node.startPosition.row),
+            ...(rhs ? { value: rhs.slice(0, 80) } : {}),
+          });
+        }
+      }
+
       // attr_reader :x, :y and friends define methods too.
       if (
         node.type === "call" && !node.childForFieldName("receiver") &&

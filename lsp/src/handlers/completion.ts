@@ -45,6 +45,31 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
     }));
   }
 
+  // `Camera::` / `Game::Ui::`: what that namespace defines — nested classes,
+  // modules and constants.
+  const scoped = prefix.match(
+    /(?<![\w:])((?:::)?[A-Z]\w*(?:::[A-Z]\w*)*)::\w*$/,
+  );
+  if (scoped) {
+    const here = ws.fileTree(uri)?.rootNode.descendantForPosition({
+      row: pos.line,
+      column: pos.character,
+    });
+    const ns = resolver.resolveConstName(
+      scoped[1].replace(/^::/, ""),
+      here ? resolver.enclosingNamespace(here) : "",
+    );
+    if (!ns) return [];
+    const items: unknown[] = [];
+    for (const [name, locs] of ws.defs) {
+      const def = locs.find((l) =>
+        l.container === ns && l.kind && l.kind !== "method"
+      );
+      if (def) items.push(constantItem(name, def));
+    }
+    return items;
+  }
+
   const chain = prefix.match(/([A-Za-z_][\w.]*)\.\s*[\w]*$/)?.[1];
   if (chain) {
     const entries = engine.api.get(chain);
@@ -149,11 +174,20 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
         : {}),
     });
   }
+  for (const [name, def] of resolver.constantsInScope(ns)) {
+    items.push(constantItem(name, def));
+  }
   for (const mod of ["Geometry", "Easing"]) {
     if (engine.api.has(mod)) items.push({ label: mod, kind: 9 }); // Module
   }
   return items;
 };
+
+const constantItem = (name: string, def: Def) => ({
+  label: name,
+  kind: def.kind === "constant" ? 21 : def.kind === "module" ? 9 : 7,
+  ...(def.value ? { detail: `= ${def.value}` } : {}),
+});
 
 // The receiver expression immediately before the completion dot. Returns the
 // full call node for a chained receiver (`camera.ui`), else the identifier/ivar.

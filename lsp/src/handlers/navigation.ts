@@ -1,4 +1,5 @@
 import { nodeRange } from "../analyze.ts";
+import { constPathAt } from "../resolve.ts";
 import type { Node } from "../ruby.ts";
 import type { Def, Loc, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
@@ -10,15 +11,18 @@ export const definition = (ctx: Ctx, uri: string, pos: Pos): Loc[] => {
   const local = resolver.resolveLocal(uri, pos, word);
   if (local) return [{ uri, range: nodeRange(local.node) }];
 
-  // A bare constant jumps only where Ruby's lexical lookup would reach it
-  // (enclosing namespaces, then top-level) — not an unrelated namespace that
-  // shares the name.
+  // A constant (`Layout`, `Camera::SCREEN_W`) jumps only where Ruby's lookup
+  // would reach it (enclosing namespaces, ancestors, then top-level) — not an
+  // unrelated namespace that shares the name.
   const node = ws.fileTree(uri)?.rootNode.descendantForPosition({
     row: pos.line,
     column: pos.character,
   });
-  if (node?.type === "constant" && node.parent?.type !== "scope_resolution") {
-    const def = resolver.resolveConst(word, resolver.enclosingNamespace(node));
+  if (node?.type === "constant") {
+    const def = resolver.resolveConst(
+      constPathAt(node),
+      resolver.enclosingNamespace(node),
+    );
     return def ? [{ uri: def.uri, range: def.range }] : [];
   }
 

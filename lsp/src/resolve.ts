@@ -104,6 +104,18 @@ const enclosingClass = (node: Node): Node | null => {
   return null;
 };
 
+/** The constant path a `constant` node names: the whole `A::B` when it's the
+ * right-hand name of a scope resolution, else just its own text. A leading
+ * `::` (top-level) is dropped. */
+export const constPathAt = (node: Node): string => {
+  const parent = node.parent;
+  const path = parent?.type === "scope_resolution" &&
+      parent.childForFieldName("name")?.id === node.id
+    ? parent.text
+    : node.text;
+  return path.replace(/^::/, "");
+};
+
 /** Whether `self` at `node` is the class object rather than an instance: inside
  * `def self.x`, a `class << self` body, or a class body outside any method. */
 export const selfIsSingleton = (node: Node): boolean => {
@@ -321,7 +333,7 @@ export class Resolver implements ConstResolver {
     this.#nsIndex = new Map();
     for (const [name, locs] of this.#ws.defs) {
       for (const loc of locs) {
-        if (loc.kind === "method" || !loc.kind) continue;
+        if (loc.kind !== "class" && loc.kind !== "module") continue;
         const qualified = loc.container ? `${loc.container}::${name}` : name;
         // First body wins, except that a reopening without `< Base` must not
         // hide the declaration that names the superclass.
@@ -348,9 +360,60 @@ export class Resolver implements ConstResolver {
     return null;
   }
 
+  /** A class, module or value constant (`SCREEN_W = 1280`) by Ruby's lookup:
+   * lexical scopes outward, then the enclosing class's ancestors. */
   resolveConst(path: string, container: string): Def | null {
-    const key = this.resolveConstName(path, container);
-    return key ? this.namespaceIndex().get(key) ?? null : null;
+    const index = this.#constantIndex();
+    const parts = container ? container.split("::") : [];
+    for (let i = parts.length; i >= 0; i--) {
+      const prefix = parts.slice(0, i).join("::");
+      const def = index.get(prefix ? `${prefix}::${path}` : path);
+      if (def) return def;
+    }
+    for (const ns of this.ancestors(container).slice(1)) {
+      const def = index.get(`${ns}::${path}`);
+      if (def) return def;
+    }
+    return null;
+  }
+
+  /** Value constants and namespaces visible from `container` without a
+   * prefix: those of each lexical scope, the ancestors, and the top level. */
+  constantsInScope(container: string): Map<string, Def> {
+    const scopes = new Set<string>([""]);
+    const parts = container ? container.split("::") : [];
+    for (let i = 1; i <= parts.length; i++) {
+      scopes.add(parts.slice(0, i).join("::"));
+    }
+    for (const ns of this.ancestors(container)) scopes.add(ns);
+    const out = new Map<string, Def>();
+    for (const [name, locs] of this.#ws.defs) {
+      const hit = locs.find((l) =>
+        l.kind === "constant" && scopes.has(l.container ?? "")
+      );
+      if (hit) out.set(name, hit);
+    }
+    return out;
+  }
+
+  // Qualified name -> class/module/constant Def; namespaces win a tie.
+  #constIndexCache = new Map<string, Def>();
+  #constIndexGeneration = -1;
+  #constantIndex(): Map<string, Def> {
+    if (this.#constIndexGeneration === this.#ws.generation) {
+      return this.#constIndexCache;
+    }
+    const index = new Map(this.namespaceIndex());
+    for (const [name, locs] of this.#ws.defs) {
+      for (const loc of locs) {
+        if (loc.kind !== "constant") continue;
+        const q = loc.container ? `${loc.container}::${name}` : name;
+        if (!index.has(q)) index.set(q, loc);
+      }
+    }
+    this.#constIndexCache = index;
+    this.#constIndexGeneration = this.#ws.generation;
+    return index;
   }
 
   /** Ranks a bare call's candidate definitions by the call site's enclosing

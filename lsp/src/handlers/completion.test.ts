@@ -563,6 +563,31 @@ describe("completion", () => {
     });
   });
 
+  it("completes constants in scope and after `Namespace::`", () => {
+    const lib = "file:///test/consts-lib.rb";
+    ctx.ws.indexFile(
+      lib,
+      "TOP_MAX = 9\nmodule Realm\n  TILE = 16\n  class Base\n    GRAVITY = 1\n  end\n  class Hero < Base\n    SPEED = 4\n    class Hitbox\n    end\n  end\n  class Other\n    HIDDEN = 1\n  end\nend\n",
+    );
+    const u = "file:///test/consts.rb";
+    const src =
+      "module Realm\n  class Hero\n    def t\n      S\n    end\n  end\nend\ndef go\n  Realm::Hero::\nend\n";
+    ctx.ws.indexFile(u, src);
+    const bare = labelsOf(completion(ctx, u, { line: 3, character: 7 }));
+    for (const c of ["SPEED", "TILE", "GRAVITY", "TOP_MAX"]) {
+      assert(bare.includes(c), c);
+    }
+    assert(!bare.includes("HIDDEN"), "another class's constant");
+    // deno-lint-ignore no-explicit-any
+    const speed = completion(ctx, u, { line: 3, character: 7 }).find((i: any) =>
+      i.label === "SPEED"
+    ) as { kind: number; detail: string };
+    assertEquals([speed.kind, speed.detail], [21, "= 4"]);
+
+    const scoped = labelsOf(completion(ctx, u, { line: 8, character: 15 }));
+    assertEquals(scoped.sort(), ["Hitbox", "SPEED"]);
+  });
+
   it("returns nothing for a member access on an untypeable receiver", () => {
     const u = "file:///test/untyped.rb";
     // `mystery` is a bare method call — no known type — so `.` completes to

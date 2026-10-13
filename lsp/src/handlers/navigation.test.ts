@@ -59,7 +59,38 @@ const NAV = [
   "end", // 15
 ].join("\n");
 
+const CONSTS = [
+  "MAX = 9", // 0
+  "module Game", // 1
+  "  TILE = 16", // 2
+  "  class Base", // 3
+  "    GRAVITY = 0.5", // 4
+  "  end", // 5
+  "  class Player < Base", // 6
+  "    # Top speed.", // 7
+  "    SPEED = 4", // 8
+  "    def t", // 9
+  "      [TILE, GRAVITY, MAX]", // 10
+  "    end", // 11
+  "  end", // 12
+  "end", // 13
+  "Game::Player::SPEED", // 14
+  "",
+].join("\n");
+
 describe("definition", () => {
+  it("jumps to value constants: lexical, inherited, top-level and qualified", () => {
+    const ctx = ctxOf({ "k.rb": CONSTS });
+    const line = (needle: string, row: number) =>
+      definition(ctx, uri("k.rb"), at(CONSTS, needle, row))[0]?.range.start
+        .line;
+    assertEquals(line("TILE", 10), 2);
+    assertEquals(line("GRAVITY", 10), 4);
+    assertEquals(line("MAX", 10), 0);
+    assertEquals(line("SPEED", 14), 8);
+    assertEquals(line("Player", 14), 6);
+  });
+
   it("jumps a parameter to its def line, not elsewhere", () => {
     const ctx = ctxOf({ "a.rb": NAV });
     const out = definition(ctx, uri("a.rb"), at(NAV, "args", 8));
