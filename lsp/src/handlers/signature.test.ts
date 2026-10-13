@@ -189,4 +189,83 @@ describe("signatureHelp", () => {
     assertEquals(sig.signatures[0].parameters.length, 2);
     assertEquals(sig.activeParameter, 0);
   });
+  describe("workspace methods", () => {
+    const SRC = [
+      "class Rig",
+      "  # Follows a target.",
+      "  def follow target, speed = 1, smooth: true",
+      "  end",
+      "  def self.build name, size",
+      "  end",
+      "  def initialize w, h",
+      "  end",
+      "  def t",
+      "    follow(a, b)",
+      "    follow a, b",
+      "    follow(a, smooth: false)",
+      "  end",
+      "  def self.c",
+      "    build(a, b)",
+      "  end",
+      "end",
+      "def go",
+      "  rig = Rig.new(1, 2)",
+      "  rig.follow(x, y)",
+      "  Rig.build(x, y)",
+      "  helper(1, 2)",
+      "end",
+      "def helper a, b",
+      "end",
+      "",
+    ].join("\n");
+    const u = "file:///test/ws_sig.rb";
+    // Signature at the char after the first `needle` match (plus `skip`).
+    const at = (needle: string, skip = 0): Sig => {
+      ctx.ws.indexFile(u, SRC);
+      const lines = SRC.split("\n");
+      const line = lines.findIndex((l) => l.includes(needle));
+      const character = lines[line].indexOf(needle) + needle.length + skip;
+      return signatureHelp(ctx, u, { line, character });
+    };
+
+    it("helps a bare instance-method call with its doc", () => {
+      const sig = at("follow(a, b", -1);
+      assertEquals(
+        sig.signatures[0].label,
+        "Rig#follow(target, speed = 1, smooth: true)",
+      );
+      assert(sig.signatures[0].documentation.value.includes("Follows"));
+      assertEquals(sig.activeParameter, 1);
+    });
+
+    it("helps paren-less calls", () => {
+      assertEquals(at("follow a, b").activeParameter, 1);
+    });
+
+    it("jumps to a keyword argument's parameter", () => {
+      assertEquals(at("smooth: f").activeParameter, 2);
+    });
+
+    it("helps class methods from a class-method context and on the constant", () => {
+      assertEquals(at("build(a").signatures[0].label, "Rig.build(name, size)");
+      assertEquals(
+        at("Rig.build(x").signatures[0].label,
+        "Rig.build(name, size)",
+      );
+    });
+
+    it("maps `Klass.new(` to `initialize`", () => {
+      const sig = at("Rig.new(1");
+      assertEquals(sig.signatures[0].label, "Rig.new(w, h)");
+      assertEquals(sig.activeParameter, 0);
+    });
+
+    it("helps a typed local receiver and top-level methods", () => {
+      assertEquals(
+        at("rig.follow(x").signatures[0].label,
+        "Rig#follow(target, speed = 1, smooth: true)",
+      );
+      assertEquals(at("helper(1").signatures[0].label, "helper(a, b)");
+    });
+  });
 });
