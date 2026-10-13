@@ -110,9 +110,10 @@ Both feasibility risks retired, everything verified by a scripted LSP client
      documented variants exist)
    - perf rules are Information severity, never warnings
 3. **Fixed feature contract.** Completion, hover, signature help, definition,
-   references, diagnostics — and nothing else until those are excellent. LSP
-   servers are scope gravity wells; rename, formatting, and general refactoring
-   are explicitly out (see Non-goals).
+   references, diagnostics, plus the index-backed outline/symbol search and
+   document highlights — and nothing else until those are excellent. LSP servers
+   are scope gravity wells; rename, formatting, and general refactoring are
+   explicitly out (see Non-goals).
 
 ## Architecture (as spiked, kept for production)
 

@@ -255,7 +255,7 @@ const SHOWCASES: Showcase[] = [
   {
     title: "Completions",
     desc:
-      "The full args.* tree, Geometry and Easing, mruby core methods, and your project's own definitions — vendored libraries included. One-hop typing means enemies = [] makes enemies. complete like an Array, and @anim = Animation.new completes your class's methods, inherited ones too.",
+      "The full args.* tree, Geometry and Easing, mruby core methods, constants, variables, require paths, and your project's own definitions — vendored libraries included. Receivers type without annotations: enemies = [] completes like an Array, @anim = Animation.new, self. and Camera. complete your class's methods (inherited ones too), and @enemies << Enemy.new types e in @enemies.each { |e| e. }.",
     mock: CompletionMock,
   },
   {
@@ -267,7 +267,7 @@ const SHOWCASES: Showcase[] = [
   {
     title: "Signature help",
     desc:
-      "Positional and keyword parameters with the active argument highlighted as you type — including DragonRuby's paren-less call style. Signatures come from the engine's own source.",
+      "Positional and keyword parameters with the active argument highlighted as you type — including DragonRuby's paren-less call style. Engine signatures come from the engine's own source; your methods from their defs, Klass.new( from initialize.",
     mock: SignatureMock,
   },
   {
@@ -279,7 +279,7 @@ const SHOWCASES: Showcase[] = [
   {
     title: "Navigation",
     desc:
-      "Go to definition and references across mygame/ and vendor/, resolved the way Ruby dispatches: own class, superclass chain, then same file. Locals stay method-scoped, and if a library you're developing is vendored into the same workspace, results point at the editable source — not the vendored copy.",
+      "Go to definition and references across mygame/ and vendor/, resolved the way Ruby dispatches: own class, superclass chain, then same file. Locals stay method-scoped, require paths and constants jump to their source, and the outline, symbol search and highlights come from the same index. If a library you're developing is vendored into the same workspace, results point at the editable source — not the vendored copy.",
     mock: NavigationMock,
   },
   {

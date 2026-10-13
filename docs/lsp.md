@@ -18,18 +18,24 @@ editors report the server crashing on startup.
 - **Completions** — the full `args.*` tree (`args.outputs.`, `args.inputs.`,
   `args.audio.`, `args.events.`, …), `Geometry`/`Easing` and friends, mruby core
   methods on literal receivers (`[1, 2].`), your project's and vendored
-  libraries' definitions, and one-hop typed variables (`enemies = []` →
-  `enemies.` completes Array; `@anim = Animation.new` → `@anim.` completes the
-  class, inherited methods included).
+  libraries' definitions, constants (`Camera::`), `@ivar`/`@@cvar`/`$global`
+  names, and `require` paths. Receivers are typed without annotations:
+  `enemies = []` completes Array; `@anim = Animation.new` (or `||=`), `self.`,
+  `Camera.`, `Camera.new.` and locals assigned from those complete the class,
+  inherited methods included; `@enemies << Enemy.new` types the block parameter
+  in `@enemies.each { |e| e. }`. `Struct.new` classes complete their members.
 - **Docs on hover** — the same content docs.dragonruby.org serves, matched to
   your installed engine version; your own code's comment blocks render too, with
   YARD tags (`@param`, `@return`, `@example`, …) as rich markdown and constant
   references as clickable links.
-- **Signature help** — positional/keyword parameters with the active argument
-  highlighted, including paren-less calls.
+- **Signature help** — for engine methods and your own, with the active argument
+  highlighted, including paren-less calls and `Klass.new(` (from `initialize`).
 - **Go to definition / references** — across `mygame/` and `vendor/`, with
-  Ruby-style method resolution (own class, superclass chain, then same file) and
-  method-scoped results for locals and parameters.
+  Ruby-style method resolution (own class, superclass chain, then same file),
+  method-scoped results for locals and parameters, constants, globals, and
+  `require "app/…"` paths.
+- **Outline and symbol search** — the file outline and breadcrumbs, project-wide
+  symbol search, and highlighting of the symbol under the cursor.
 - **Diagnostics** — syntax errors, unknown engine methods, wrong argument
   counts, unknown or missing keywords, and shape checks (`Geometry.distance`
   wants `.x`/`.y` on both points — derived from the engine's own source).
