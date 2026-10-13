@@ -7,6 +7,7 @@ import {
 import type { Node } from "../ruby.ts";
 import type { Def, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
+import { requireCompletions } from "./requires.ts";
 
 export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
   const { ws, resolver, yard, engine } = ctx;
@@ -26,6 +27,24 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
       },
     }));
   };
+
+  const required = requireCompletions(ctx, uri, pos, prefix);
+  if (required) return required;
+
+  // `$` sigil: globals named anywhere in the workspace.
+  const global = prefix.match(/(?<![\w@$])\$\w*$/);
+  if (global) {
+    const start = pos.character - global[0].length;
+    return resolver.globalNames(uri, pos).map((name) => ({
+      label: name,
+      kind: 6, // Variable
+      filterText: name,
+      textEdit: {
+        range: { start: { line: pos.line, character: start }, end: pos },
+        newText: name,
+      },
+    }));
+  }
 
   // `@`/`@@` sigil: instance or class variables of the enclosing class chain.
   // The edit range spans the sigil so clients whose word pattern stops at `@`
@@ -69,6 +88,11 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
     }
     return items;
   }
+
+  // `:`, quotes and `/` are trigger characters only for `Foo::` and require
+  // paths (handled above); anywhere else they'd pop the bare-identifier list
+  // mid-string or after `key:`.
+  if (/(?:^|[^:]):$|["'/]$/.test(prefix)) return [];
 
   const chain = prefix.match(/([A-Za-z_][\w.]*)\.\s*[\w]*$/)?.[1];
   if (chain) {

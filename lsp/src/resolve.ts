@@ -1,5 +1,5 @@
 import type { Node } from "./ruby.ts";
-import type { ConstResolver, Def, Pos } from "./types.ts";
+import type { ConstResolver, Def, Loc, Pos } from "./types.ts";
 import type { Workspace } from "./workspace.ts";
 
 export type LocalHit = {
@@ -443,6 +443,71 @@ export class Resolver implements ConstResolver {
     return [...names];
   }
 
+  /** Every `$global` named in the workspace, except the one being typed at
+   * `pos`. */
+  globalNames(uri: string, pos: Pos): string[] {
+    const names = new Set<string>();
+    for (const n of this.#nodesOf("global_variable")) {
+      if (
+        n.uri === uri && n.range.start.line === pos.line &&
+        n.range.start.character <= pos.character &&
+        n.range.end.character >= pos.character
+      ) continue;
+      names.add(n.text);
+    }
+    return [...names];
+  }
+
+  /** Occurrences of the instance, class or global variable `node` names:
+   * globals anywhere; `@x`/`@@x` in the same class or its ancestors. */
+  variableRefs(uri: string, node: Node): Loc[] {
+    const visible = node.type === "global_variable"
+      ? null
+      : new Set(this.ancestors(this.enclosingNamespace(node)));
+    if (visible && visible.size === 0) visible.add("");
+    return this.#nodesOf(node.type)
+      .filter((n) => n.text === node.text && (!visible || visible.has(n.ns)))
+      .map(({ uri, range }) => ({ uri, range }));
+  }
+
+  /** Where `$name` is assigned (`=` or `||=`), across the workspace. */
+  globalAssignments(name: string): Loc[] {
+    return this.#nodesOf("global_variable")
+      .filter((n) => n.text === name && n.assigned)
+      .map(({ uri, range }) => ({ uri, range }));
+  }
+
+  #nodesOf(type: string): {
+    uri: string;
+    range: Loc["range"];
+    text: string;
+    ns: string;
+    assigned: boolean;
+  }[] {
+    const out = [];
+    for (const uri of this.#ws.fileUris()) {
+      const root = this.#ws.fileTree(uri)?.rootNode;
+      if (!root) continue;
+      for (const n of root.descendantsOfType(type)) {
+        if (!n) continue;
+        out.push({
+          uri,
+          range: {
+            start: {
+              line: n.startPosition.row,
+              character: n.startPosition.column,
+            },
+            end: { line: n.endPosition.row, character: n.endPosition.column },
+          },
+          text: n.text,
+          ns: this.enclosingNamespace(n),
+          assigned: !!n.parent && bindingLeft(n.parent)?.id === n.id,
+        });
+      }
+    }
+    return out;
+  }
+
   /** Qualified class/module name -> Def, rebuilt when the def index moves. */
   namespaceIndex(): Map<string, Def> {
     if (this.#nsGeneration === this.#ws.generation) return this.#nsIndex;
@@ -689,6 +754,9 @@ export class Resolver implements ConstResolver {
     ) {
       return this.#typeIvar(receiver);
     }
+    if (receiver.type === "global_variable") {
+      return this.#typeGlobal(receiver);
+    }
     if (receiver.type === "self") {
       const ns = this.enclosingNamespace(receiver);
       return ns
@@ -852,6 +920,23 @@ export class Resolver implements ConstResolver {
       ...(keys?.length ? { keys } : {}),
       ...(element ? { element } : {}),
     };
+  }
+
+  // Rule 3 for `$globals`: every assignment across the workspace must agree.
+  #typeGlobal(receiver: Node): TypeGuess | null {
+    const types: (string | null)[] = [];
+    for (const uri of this.#ws.fileUris()) {
+      const root = this.#ws.fileTree(uri)?.rootNode;
+      for (const n of root?.descendantsOfType("global_variable") ?? []) {
+        if (!n || n.text !== receiver.text || !n.parent) continue;
+        if (bindingLeft(n.parent)?.id !== n.id) continue;
+        const rhs = n.parent.childForFieldName("right");
+        types.push(rhs ? this.#assignedClass(rhs, n) : null);
+      }
+    }
+    const uniq = new Set(types);
+    if (uniq.size !== 1 || uniq.has(null)) return null;
+    return { class: [...uniq][0]!, source: "ivar" };
   }
 
   // The one class of every element `ref` (a local or ivar) is known to hold in

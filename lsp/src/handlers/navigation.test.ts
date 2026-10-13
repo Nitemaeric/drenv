@@ -78,6 +78,37 @@ const CONSTS = [
   "",
 ].join("\n");
 
+describe("variables", () => {
+  const SRC = [
+    "$game = 1", // 0
+    "class A", // 1
+    "  def t", // 2
+    "    @x = game", // 3
+    "    @x + $game", // 4
+    "  end", // 5
+    "end", // 6
+    "class B", // 7
+    "  def t", // 8
+    "    @x", // 9
+    "  end", // 10
+    "end", // 11
+  ].join("\n");
+
+  it("jumps from a global to its assignments", () => {
+    const ctx = ctxOf({ "v.rb": SRC });
+    const out = definition(ctx, uri("v.rb"), at(SRC, "$game", 4));
+    assertEquals(out.map((l) => l.range.start.line), [0]);
+  });
+
+  it("scopes ivar and global references to the variable, not the word", () => {
+    const ctx = ctxOf({ "v.rb": SRC });
+    const lines = (pos: { line: number; character: number }) =>
+      references(ctx, uri("v.rb"), pos).map((l) => l.range.start.line);
+    assertEquals(lines(at(SRC, "@x", 4)), [3, 4]); // not B's @x
+    assertEquals(lines(at(SRC, "$game", 4)), [0, 4]); // not the local `game`
+  });
+});
+
 describe("definition", () => {
   it("jumps to value constants: lexical, inherited, top-level and qualified", () => {
     const ctx = ctxOf({ "k.rb": CONSTS });

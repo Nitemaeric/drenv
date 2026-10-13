@@ -623,6 +623,22 @@ describe("completion", () => {
       );
     });
 
+    it("completes and types `$globals`", () => {
+      ctx.ws.indexFile(
+        "file:///test/globals.rb",
+        "$rig ||= Rig.new\n$score = 0\n",
+      );
+      const names = at("def t\n  $‸\nend\n");
+      assert(names.includes("$rig") && names.includes("$score"));
+      assert(at("def t\n  $rig.‸boss\nend\n").includes("boss"));
+    });
+
+    it("stays quiet after a lone `:`, in strings and after `/`", () => {
+      assertEquals(at("def t\n  f(key:‸)\nend\n"), []);
+      assertEquals(at('def t\n  x = "‸"\nend\n'), []);
+      assertEquals(at("def t\n  a = b /‸\nend\n"), []);
+    });
+
     it("leaves parameters and self-referential locals untyped", () => {
       assertEquals(at("def t foe\n  foe.‸hp\nend\n"), []);
       assertEquals(at("def t\n  x = x\n  x.‸hp\nend\n"), []);

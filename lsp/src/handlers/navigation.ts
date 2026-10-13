@@ -1,13 +1,23 @@
 import { nodeRange } from "../analyze.ts";
 import { constPathAt } from "../resolve.ts";
+import { requireTarget } from "./requires.ts";
 import type { Node } from "../ruby.ts";
 import type { Def, Loc, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
 
 export const definition = (ctx: Ctx, uri: string, pos: Pos): Loc[] => {
   const { ws, resolver } = ctx;
+  const required = requireTarget(ctx, uri, pos);
+  if (required) return required;
   const word = resolver.wordAt(uri, pos);
   if (!word) return [];
+  const at = ws.fileTree(uri)?.rootNode.descendantForPosition({
+    row: pos.line,
+    column: pos.character,
+  });
+  if (at?.type === "global_variable") {
+    return resolver.globalAssignments(at.text);
+  }
   const local = resolver.resolveLocal(uri, pos, word);
   if (local) return [{ uri, range: nodeRange(local.node) }];
 
@@ -73,6 +83,18 @@ export const references = (ctx: Ctx, uri: string, pos: Pos): Loc[] => {
   const { ws, resolver } = ctx;
   const word = resolver.wordAt(uri, pos);
   if (!word) return [];
+
+  // `@x`, `@@x`, `$x`: the same variable, not every word `x`.
+  const at = ws.fileTree(uri)?.rootNode.descendantForPosition({
+    row: pos.line,
+    column: pos.character,
+  });
+  if (
+    at?.type === "instance_variable" || at?.type === "class_variable" ||
+    at?.type === "global_variable"
+  ) {
+    return resolver.variableRefs(uri, at);
+  }
 
   // A local's references live inside its method, not across the workspace.
   const local = resolver.resolveLocal(uri, pos, word);
