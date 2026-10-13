@@ -1,6 +1,6 @@
 import { CORE_CLASSES, hashLiteralKeys, literalCoreClass } from "../resolve.ts";
 import type { Node } from "../ruby.ts";
-import type { Pos } from "../types.ts";
+import type { Def, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
 
 export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
@@ -61,6 +61,18 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
   // `h = { f: 1 }` → `h.` completes the hash's keys (DragonRuby dot-access) too.
   const recv = receiverNode(ctx, uri, pos, prefix);
   if (recv) {
+    // `Camera.` on a workspace class/module: its class-level methods
+    // (`def self.x`, `class << self`, `extend`ed modules) up the superclass
+    // chain.
+    if (recv.type === "constant" || recv.type === "scope_resolution") {
+      const ns = resolver.resolveConstName(
+        recv.text,
+        resolver.enclosingNamespace(recv),
+      );
+      return ns
+        ? defCompletions(ctx, resolver.methodsOf(ns, { singleton: true }))
+        : [];
+    }
     const lit = literalCoreClass(recv);
     const guess = lit
       ? { class: lit, keys: recv.type === "hash" ? hashLiteralKeys(recv) : [] }
@@ -74,7 +86,7 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
       if (CORE_CLASSES.has(guess.class)) {
         return [...keyItems, ...completeCore(guess.class)];
       }
-      const typed = classMethodCompletions(ctx, guess.class);
+      const typed = defCompletions(ctx, resolver.methodsOf(guess.class));
       if (keyItems.length > 0 || typed.length > 0) {
         return [...keyItems, ...typed];
       }
@@ -165,17 +177,14 @@ const receiverNode = (
   return node;
 };
 
-// Instance methods of a workspace class and its superclass chain, as completion
-// items. Names come from the def index (methodsOf yields Defs without their
-// name key); the container set is that same chain.
-const classMethodCompletions = (ctx: Ctx, qualified: string): unknown[] => {
+// Method Defs (from `methodsOf`) as completion items. Names come from the def
+// index, since a Def doesn't carry its own name key.
+const defCompletions = (ctx: Ctx, defs: Def[]): unknown[] => {
   const { ws, yard } = ctx;
-  const containers = new Set(ctx.resolver.ancestors(qualified));
+  const wanted = new Set(defs);
   const items: unknown[] = [];
   for (const [name, locs] of ws.defs) {
-    const methods = locs.filter((l) =>
-      l.kind === "method" && !l.singleton && containers.has(l.container ?? "")
-    );
+    const methods = locs.filter((l) => wanted.has(l));
     if (methods.length === 0) continue;
     const docs = [...new Set(methods.map((l) => l.doc).filter(Boolean))];
     const documented = methods.find((l) => l.doc);

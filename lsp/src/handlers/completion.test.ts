@@ -432,6 +432,46 @@ describe("completion", () => {
     assert(labels.includes("shared"));
   });
 
+  it("completes a workspace class's class methods on its constant (Camera.)", () => {
+    const u = "file:///test/camera.rb";
+    const src = [
+      "module Zoomable",
+      "  def zoom",
+      "  end",
+      "end",
+      "class BaseCamera",
+      "  def self.reset",
+      "  end",
+      "end",
+      "class Camera < BaseCamera",
+      "  extend Zoomable",
+      "  # Viewport width.",
+      "  def self.viewport_w",
+      "  end",
+      "  class << self",
+      "    attr_accessor :target_x",
+      "    def viewport_h",
+      "    end",
+      "  end",
+      "  def instance_only",
+      "  end",
+      "end",
+      "def tick args",
+      "  args.outputs.watch Camera.",
+      "  args.outputs.watch @transitioning",
+      "end",
+      "",
+    ].join("\n");
+    ctx.ws.indexFile(u, src);
+    const items = completion(ctx, u, afterDot(src, "Camera"));
+    const labels = labelsOf(items);
+    for (const m of ["viewport_w", "viewport_h", "target_x", "reset", "zoom"]) {
+      assert(labels.includes(m), `expected Camera.${m}`);
+    }
+    assert(!labels.includes("instance_only"), "instance method on the class");
+    assert(!labels.includes("Camera"), "not the bare-identifier list");
+  });
+
   it("returns nothing for a member access on an untypeable receiver", () => {
     const u = "file:///test/untyped.rb";
     // `mystery` is a bare method call — no known type — so `.` completes to

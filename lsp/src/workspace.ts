@@ -78,9 +78,17 @@ export class Workspace {
 
     const ATTRS = new Set(["attr_reader", "attr_writer", "attr_accessor"]);
 
-    const visit = (node: Node, container: string, owner?: Def) => {
+    // `singleton`: inside a `class << self` body, where `def x` / `attr_*`
+    // define class-level methods (display `Class.x`), same as `def self.x`.
+    const visit = (
+      node: Node,
+      container: string,
+      owner?: Def,
+      singleton = false,
+    ) => {
       let inner = container;
       let innerOwner = owner;
+      let innerSingleton = singleton;
       if (["method", "class", "module"].includes(node.type)) {
         const name = node.childForFieldName("name");
         if (name) {
@@ -93,14 +101,22 @@ export class Workspace {
             superclass: node.type === "class"
               ? node.childForFieldName("superclass")?.namedChild(0)?.text
               : undefined,
+            ...(singleton && node.type === "method" ? { singleton: true } : {}),
           };
           addDef(name.text, def);
 
           if (node.type !== "method") {
             inner = container ? `${container}::${name.text}` : name.text;
             innerOwner = def;
+            innerSingleton = false;
           }
         }
+      }
+
+      // `class << self` opens the namespace's singleton class. A non-`self`
+      // target (`class << obj`) isn't this namespace, so leave it alone.
+      if (node.type === "singleton_class") {
+        innerSingleton = node.childForFieldName("value")?.type === "self";
       }
 
       // `include M` / `extend M` in a class or module body: mixin references
@@ -161,12 +177,13 @@ export class Workspace {
             kind: "method",
             container: container || undefined,
             doc,
+            ...(singleton ? { singleton: true } : {}),
           });
         }
       }
 
       for (let i = 0; i < node.namedChildCount; i++) {
-        visit(node.namedChild(i)!, inner, innerOwner);
+        visit(node.namedChild(i)!, inner, innerOwner, innerSingleton);
       }
     };
     visit(tree.rootNode, "");

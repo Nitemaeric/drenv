@@ -136,6 +136,15 @@ describe("Resolver.namespaceIndex", () => {
     assertEquals(ns.get("Game::Player")!.superclass, "Entity");
   });
 
+  it("keeps the superclass when a reopening body omits it", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile("file:///m/a.rb", "class Camera\n  def ext\n  end\nend\n");
+    ws.indexFile(uri, "class Base\nend\nclass Camera < Base\nend\n");
+    const r = new Resolver(ws);
+    assertEquals(r.namespaceIndex().get("Camera")!.superclass, "Base");
+    assertEquals(r.ancestors("Camera"), ["Camera", "Base"]);
+  });
+
   it("caches against the workspace generation", () => {
     const { ws, resolver } = setup();
     const first = resolver.namespaceIndex();

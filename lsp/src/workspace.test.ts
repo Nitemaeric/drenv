@@ -170,6 +170,38 @@ describe("Workspace.indexFile singleton methods", () => {
     // A non-`self` receiver isn't provably this namespace — skipped entirely.
     assertEquals(ws.defs.get("helper"), undefined);
   });
+
+  it("indexes `class << self` methods and attrs as singletons", () => {
+    const ws = new Workspace(ruby);
+    ws.indexFile(
+      uri,
+      [
+        "class Camera",
+        "  class << self",
+        "    attr_reader :zoom",
+        "    def viewport_w",
+        "    end",
+        "  end",
+        "  def render",
+        "  end",
+        "  class Lens",
+        "    def focus",
+        "    end",
+        "  end",
+        "end",
+        "",
+      ].join("\n"),
+    );
+
+    for (const name of ["zoom", "viewport_w"]) {
+      const [def] = ws.defs.get(name)!;
+      assertEquals(def.singleton, true, name);
+      assertEquals(def.container, "Camera", name);
+    }
+    // The singleton scope ends with the `class << self` body.
+    assertEquals(ws.defs.get("render")![0].singleton, undefined);
+    assertEquals(ws.defs.get("focus")![0].singleton, undefined);
+  });
 });
 
 describe("Workspace.applyEdits", () => {

@@ -296,7 +296,12 @@ export class Resolver implements ConstResolver {
       for (const loc of locs) {
         if (loc.kind === "method" || !loc.kind) continue;
         const qualified = loc.container ? `${loc.container}::${name}` : name;
-        if (!this.#nsIndex.has(qualified)) this.#nsIndex.set(qualified, loc);
+        // First body wins, except that a reopening without `< Base` must not
+        // hide the declaration that names the superclass.
+        const seen = this.#nsIndex.get(qualified);
+        if (!seen || (!seen.superclass && loc.superclass)) {
+          this.#nsIndex.set(qualified, loc);
+        }
       }
     }
     this.#nsGeneration = this.#ws.generation;
