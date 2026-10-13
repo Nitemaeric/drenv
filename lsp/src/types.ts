@@ -7,6 +7,7 @@ export type Def = Loc & {
   container?: string; // enclosing namespace, "Conjuration::Animation"
   kind?: "method" | "class" | "module" | "constant";
   value?: string; // a constant's assigned expression, first line, as written
+  members?: string[]; // a `Struct.new(:x, :y)` class's members, in order
   doc?: string; // raw comment block, rendered lazily
   superclass?: string; // as written at the class site
   singleton?: boolean; // P3: `def self.x` — display `Class.x`, not `Class#x`

@@ -127,7 +127,18 @@ const workspaceSignature = (
 
   const named = new Set(ws.defs.get(name) ?? []);
   const target = candidates.find((d) => named.has(d));
-  if (!target) return null;
+  if (!target) {
+    // A Struct class without its own `initialize` takes its members.
+    const guess = receiverNode && resolver.receiverType(uri, receiverNode);
+    const members = name === "initialize" && guess
+      ? resolver.namespaceIndex().get(guess.class)?.members
+      : undefined;
+    if (!guess || !members?.length) return null;
+    return {
+      label: `${guess.class}.new(${members.join(", ")})`,
+      params: members.map((m) => ({ label: m, name: m, kind: "optional" })),
+    };
+  }
   const def = ws.fileTree(target.uri)?.rootNode.descendantForPosition({
     row: target.range.start.line,
     column: target.range.start.character,

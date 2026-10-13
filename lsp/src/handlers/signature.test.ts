@@ -260,6 +260,17 @@ describe("signatureHelp", () => {
       assertEquals(sig.activeParameter, 0);
     });
 
+    it("takes a Struct's members as `new` parameters", () => {
+      const src = "Vec = Struct.new(:x, :y)\nVec.new(1, 2)\n";
+      ctx.ws.indexFile("file:///test/struct_sig.rb", src);
+      const sig: Sig = signatureHelp(ctx, "file:///test/struct_sig.rb", {
+        line: 1,
+        character: 11,
+      });
+      assertEquals(sig.signatures[0].label, "Vec.new(x, y)");
+      assertEquals(sig.activeParameter, 1);
+    });
+
     it("helps a typed local receiver and top-level methods", () => {
       assertEquals(
         at("rig.follow(x").signatures[0].label,

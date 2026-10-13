@@ -608,6 +608,21 @@ describe("completion", () => {
       );
     });
 
+    it("completes Struct members and block-defined methods", () => {
+      ctx.ws.indexFile(
+        "file:///test/structs.rb",
+        "Vec = Struct.new(:x, :y, keyword_init: false) do\n  def len\n  end\nend\nclass Box < Struct.new(:w, :h)\n  def area\n  end\nend\n",
+      );
+      assertEquals(
+        at("def t\n  v = Vec.new(1, 2)\n  v.‸x\nend\n").sort(),
+        ["len", "x", "y"],
+      );
+      assertEquals(
+        at("def t\n  Box.new(1, 2).‸w\nend\n").sort(),
+        ["area", "h", "w"],
+      );
+    });
+
     it("leaves parameters and self-referential locals untyped", () => {
       assertEquals(at("def t foe\n  foe.‸hp\nend\n"), []);
       assertEquals(at("def t\n  x = x\n  x.‸hp\nend\n"), []);

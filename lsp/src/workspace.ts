@@ -24,6 +24,25 @@ const offsetAt = (text: string, pos: Pos): number => {
   return Math.min(lineStart + pos.character, lineEnd);
 };
 
+// The member symbols of a `Struct.new(:x, :y, …)` call (keyword options such
+// as `keyword_init: true` skipped), or null for any other node.
+const structMembers = (node: Node | null): Node[] | null => {
+  if (
+    node?.type !== "call" ||
+    node.childForFieldName("receiver")?.text !== "Struct" ||
+    node.childForFieldName("method")?.text !== "new"
+  ) {
+    return null;
+  }
+  const args = node.childForFieldName("arguments");
+  const out: Node[] = [];
+  for (let i = 0; i < (args?.namedChildCount ?? 0); i++) {
+    const arg = args!.namedChild(i)!;
+    if (arg.type === "simple_symbol") out.push(arg);
+  }
+  return out;
+};
+
 // A `def` in a module body that `module_function` covers: a bare
 // `module_function` earlier in the same body, or `module_function :name`
 // anywhere in it.
@@ -117,6 +136,12 @@ export class Workspace {
       if (["method", "class", "module"].includes(node.type)) {
         const name = node.childForFieldName("name");
         if (name) {
+          // `class P < Struct.new(:x, :y)`
+          const members = node.type === "class"
+            ? structMembers(
+              node.childForFieldName("superclass")?.namedChild(0) ?? null,
+            )
+            : null;
           const def: Def = {
             uri,
             range: nodeRange(name),
@@ -130,8 +155,22 @@ export class Workspace {
             ...(node.type === "method" && isModuleFunction(node, name.text)
               ? { moduleFunction: true }
               : {}),
+            ...(members
+              ? { members: members.map((m) => m.text.slice(1)) }
+              : {}),
           };
           addDef(name.text, def);
+          const qualified = container
+            ? `${container}::${name.text}`
+            : name.text;
+          for (const m of members ?? []) {
+            addDef(m.text.slice(1), {
+              uri,
+              range: nodeRange(m),
+              kind: "method",
+              container: qualified,
+            });
+          }
 
           if (node.type !== "method") {
             inner = container ? `${container}::${name.text}` : name.text;
@@ -194,11 +233,33 @@ export class Workspace {
         }
       }
 
-      // `SCREEN_W = 1280` defines a constant in the enclosing namespace.
+      // `SCREEN_W = 1280` defines a constant in the enclosing namespace;
+      // `Point = Struct.new(:x, :y) do … end` defines a class, whose block
+      // body belongs to it.
       if (node.type === "assignment") {
         const left = node.childForFieldName("left");
-        if (left?.type === "constant") {
-          const rhs = node.childForFieldName("right")?.text.split("\n")[0];
+        const right = node.childForFieldName("right");
+        const members = structMembers(right);
+        if (left?.type === "constant" && members) {
+          addDef(left.text, {
+            uri,
+            range: nodeRange(left),
+            kind: "class",
+            container: container || undefined,
+            doc: docAbove(node.startPosition.row),
+            members: members.map((m) => m.text.slice(1)),
+          });
+          inner = container ? `${container}::${left.text}` : left.text;
+          for (const m of members) {
+            addDef(m.text.slice(1), {
+              uri,
+              range: nodeRange(m),
+              kind: "method",
+              container: inner,
+            });
+          }
+        } else if (left?.type === "constant") {
+          const rhs = right?.text.split("\n")[0];
           addDef(left.text, {
             uri,
             range: nodeRange(left),
