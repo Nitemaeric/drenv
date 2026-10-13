@@ -56,11 +56,10 @@ describe("require paths", () => {
   });
 
   it("completes paths inside the require string", () => {
-    // deno-lint-ignore no-explicit-any
     const items = completion(ctx, uri("mygame/app/main.rb"), {
       line: 3,
       character: 13,
-    }) as any[];
+    }) as { label: string; textEdit: { range: { start: unknown } } }[];
     assertEquals(
       items.map((i) => i.label).sort(),
       ["app/enemy.rb", "app/player.rb", "lib/util.rb"],

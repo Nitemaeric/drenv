@@ -93,7 +93,7 @@ export const references = (ctx: Ctx, uri: string, pos: Pos): Loc[] => {
     at?.type === "instance_variable" || at?.type === "class_variable" ||
     at?.type === "global_variable"
   ) {
-    return resolver.variableRefs(uri, at);
+    return resolver.variableRefs(at);
   }
 
   // A local's references live inside its method, not across the workspace.

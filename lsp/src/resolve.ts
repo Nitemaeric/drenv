@@ -460,7 +460,7 @@ export class Resolver implements ConstResolver {
 
   /** Occurrences of the instance, class or global variable `node` names:
    * globals anywhere; `@x`/`@@x` in the same class or its ancestors. */
-  variableRefs(uri: string, node: Node): Loc[] {
+  variableRefs(node: Node): Loc[] {
     const visible = node.type === "global_variable"
       ? null
       : new Set(this.ancestors(this.enclosingNamespace(node)));
