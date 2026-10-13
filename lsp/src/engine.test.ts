@@ -287,6 +287,17 @@ describe("EngineIndex version-independent tables", () => {
     assertEquals(index.literalClass("42."), "Numeric");
     assertEquals(index.literalClass("foo."), null);
   });
+
+  it("doesn't mistake indexing, blocks or names ending in digits for literals", () => {
+    assertEquals(index.literalClass("x = [1, 2]."), "Array");
+    assertEquals(index.literalClass("  foo([1])."), null);
+    assertEquals(index.literalClass("  @list[0]."), null);
+    assertEquals(index.literalClass("  xs.map { |x| x }."), null);
+    assertEquals(index.literalClass("  h = { a: 1 }."), "Hash");
+    assertEquals(index.literalClass("  player1."), null);
+    assertEquals(index.literalClass("  @p2."), null);
+    assertEquals(index.literalClass("  3.14."), "Numeric");
+  });
 });
 
 describe("EngineIndex with no engine (null path)", () => {

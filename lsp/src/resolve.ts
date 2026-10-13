@@ -15,8 +15,18 @@ export type LocalHit = {
  * patches Hash so `h.foo` reads `h[:foo]`, so they complete as members. */
 export type TypeGuess = {
   class: string;
-  source: "literal" | "new" | "ivar" | "return" | "self" | "const";
+  source:
+    | "literal"
+    | "new"
+    | "ivar"
+    | "return"
+    | "self"
+    | "const"
+    | "element";
   keys?: string[];
+  /** For an Array: the one class every known element has (`[Foo.new]`,
+   * `list << Foo.new`), so block parameters and `list.first` can type. */
+  element?: string;
   /** The receiver is the class object itself (`Camera`, `self` in a
    * `def self.x`), so its class-level methods apply, not instance methods. */
   singleton?: boolean;
@@ -97,6 +107,16 @@ export const hashLiteralKeys = (hash: Node): string[] => {
   return keys;
 };
 
+// The outermost ERROR ancestor: what's left of a class body a dangling dot
+// collapsed, which still holds its sibling methods' assignments.
+const outermostError = (node: Node): Node | null => {
+  let out: Node | null = null;
+  for (let p = node.parent; p; p = p.parent) {
+    if (p.type === "ERROR") out = p;
+  }
+  return out;
+};
+
 const enclosingClass = (node: Node): Node | null => {
   for (let p = node.parent; p; p = p.parent) {
     if (p.type === "class" || p.type === "module") return p;
@@ -130,6 +150,102 @@ export const selfIsSingleton = (node: Node): boolean => {
   }
   return false;
 };
+
+// Array methods whose block's first parameter is an element.
+const YIELDS_ELEMENT = new Set([
+  "each",
+  "each_with_index",
+  "each_with_object",
+  "reverse_each",
+  "map",
+  "map!",
+  "collect",
+  "flat_map",
+  "filter_map",
+  "select",
+  "select!",
+  "filter",
+  "filter!",
+  "reject",
+  "reject!",
+  "delete_if",
+  "keep_if",
+  "find",
+  "detect",
+  "find_all",
+  "find_index",
+  "index",
+  "count",
+  "sum",
+  "any?",
+  "all?",
+  "none?",
+  "one?",
+  "partition",
+  "group_by",
+  "sort_by",
+  "sort_by!",
+  "min_by",
+  "max_by",
+  "take_while",
+  "drop_while",
+  "uniq",
+]);
+// Array methods returning an Array of the receiver's elements.
+const KEEPS_ELEMENTS = new Set([
+  "select",
+  "select!",
+  "filter",
+  "filter!",
+  "reject",
+  "reject!",
+  "find_all",
+  "delete_if",
+  "keep_if",
+  "sort",
+  "sort!",
+  "sort_by",
+  "sort_by!",
+  "reverse",
+  "reverse!",
+  "uniq",
+  "uniq!",
+  "compact",
+  "compact!",
+  "shuffle",
+  "shuffle!",
+  "rotate",
+  "take",
+  "drop",
+  "take_while",
+  "drop_while",
+  "dup",
+  "clone",
+  "freeze",
+  "each",
+  "each_with_index",
+  "reverse_each",
+]);
+// Array methods returning one of the receiver's elements (`first(2)` and
+// `last(2)` return an Array instead).
+const RETURNS_ELEMENT = new Set([
+  "first",
+  "last",
+  "sample",
+  "find",
+  "detect",
+  "min",
+  "max",
+  "min_by",
+  "max_by",
+  "pop",
+  "shift",
+  "delete_at",
+  "fetch",
+  "at",
+]);
+// Integer methods yielding integers to their block.
+const YIELDS_INTEGER = new Set(["times", "upto", "downto"]);
 
 // `x = …` and `x ||= …` both bind `x` for typing purposes.
 const bindingLeft = (n: Node): Node | null => {
@@ -586,7 +702,28 @@ export class Resolver implements ConstResolver {
       );
       return ns ? { class: ns, source: "const", singleton: true } : null;
     }
+    if (receiver.type === "element_reference") {
+      // `list[0]` on an Array of known elements.
+      const obj = receiver.childForFieldName("object");
+      const t = obj ? this.#receiverType(uri, obj, allowReturn) : null;
+      return t?.class === "Array" && t.element
+        ? { class: t.element, source: "element" }
+        : null;
+    }
     if (receiver.type === "call") {
+      const inner = receiver.childForFieldName("receiver");
+      const m = receiver.childForFieldName("method")?.text ?? "";
+      if (inner && (KEEPS_ELEMENTS.has(m) || RETURNS_ELEMENT.has(m))) {
+        const t = this.#receiverType(uri, inner, allowReturn);
+        if (t?.class === "Array" && t.element) {
+          const hasArgs = !!receiver.childForFieldName("arguments");
+          const one = RETURNS_ELEMENT.has(m) &&
+            !(hasArgs && (m === "first" || m === "last"));
+          return one
+            ? { class: t.element, source: "element" }
+            : { class: "Array", source: t.source, element: t.element };
+        }
+      }
       // `Klass.new` is a direct instantiation, not an inference hop.
       const path = newTargetPath(receiver);
       if (path) {
@@ -608,6 +745,9 @@ export class Resolver implements ConstResolver {
       enclosingStatementScope(receiver);
     if (!scope) return null;
     const name = receiver.text;
+
+    const block = this.#typeBlockParam(uri, receiver);
+    if (block !== undefined) return block;
 
     let best: Node | null = null;
     const scan = (n: Node) => {
@@ -638,10 +778,14 @@ export class Resolver implements ConstResolver {
     const core = LITERAL_CLASS[rhs.type];
     if (core) {
       const keys = rhs.type === "hash" ? hashLiteralKeys(rhs) : undefined;
+      const element = rhs.type === "array"
+        ? this.#elementOf(scope, receiver, [rhs])
+        : undefined;
       return {
         class: core,
         source: "literal",
         ...(keys?.length ? { keys } : {}),
+        ...(element ? { element } : {}),
       };
     }
 
@@ -672,7 +816,7 @@ export class Resolver implements ConstResolver {
   // (the def survives but its `class` parent doesn't), so fall back to the
   // nearest statement scope where the assignment still parses.
   #typeIvar(receiver: Node): TypeGuess | null {
-    const scope = enclosingClass(receiver) ??
+    const scope = enclosingClass(receiver) ?? outermostError(receiver) ??
       enclosingStatementScope(receiver);
     if (!scope) return null;
     const name = receiver.text;
@@ -698,11 +842,82 @@ export class Resolver implements ConstResolver {
     const keys = rhsNodes.length === 1 && rhsNodes[0].type === "hash"
       ? hashLiteralKeys(rhsNodes[0])
       : undefined;
+    const cls = [...uniq][0]!;
+    const element = cls === "Array"
+      ? this.#elementOf(scope, receiver, rhsNodes)
+      : undefined;
     return {
-      class: [...uniq][0]!,
+      class: cls,
       source: "ivar",
       ...(keys?.length ? { keys } : {}),
+      ...(element ? { element } : {}),
     };
+  }
+
+  // The one class of every element `ref` (a local or ivar) is known to hold in
+  // `scope`: the elements of its array-literal assignments plus whatever is
+  // pushed onto it (`ref << x`, `ref.push(x)`). Any untypeable or conflicting
+  // element -> undefined.
+  #elementOf(scope: Node, ref: Node, literals: Node[]): string | undefined {
+    const elements: Node[] = [];
+    for (const lit of literals) {
+      if (lit.type !== "array") return undefined;
+      for (let i = 0; i < lit.namedChildCount; i++) {
+        elements.push(lit.namedChild(i)!);
+      }
+    }
+    const same = (n: Node | null) =>
+      n?.type === ref.type && n.text === ref.text;
+    const scan = (n: Node) => {
+      if (n.type === "binary" && n.child(1)?.type === "<<") {
+        const right = n.childForFieldName("right");
+        if (same(n.childForFieldName("left")) && right) elements.push(right);
+      } else if (n.type === "call" && same(n.childForFieldName("receiver"))) {
+        const m = n.childForFieldName("method")?.text ?? "";
+        const args = n.childForFieldName("arguments");
+        if (["push", "append", "unshift", "prepend"].includes(m) && args) {
+          for (let i = 0; i < args.namedChildCount; i++) {
+            elements.push(args.namedChild(i)!);
+          }
+        }
+      }
+      for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
+    };
+    scan(scope);
+
+    const classes = new Set(elements.map((e) => this.#assignedClass(e, e)));
+    if (classes.size !== 1 || classes.has(null)) return undefined;
+    return [...classes][0]!;
+  }
+
+  // A block parameter (`|e|`) of the nearest block binding `ref`'s name: the
+  // element type for an Array iterator's first parameter, Numeric for
+  // `n.times { |i| }`. undefined when no block binds the name (it's an
+  // ordinary local); null when one does but nothing types it.
+  #typeBlockParam(uri: string, ref: Node): TypeGuess | null | undefined {
+    for (let p = ref.parent; p; p = p.parent) {
+      if (p.type === "method" || p.type === "singleton_method") break;
+      if (p.type !== "block" && p.type !== "do_block") continue;
+      const params = p.childForFieldName("parameters");
+      let index = -1;
+      for (let i = 0; i < (params?.namedChildCount ?? 0); i++) {
+        const param = params!.namedChild(i)!;
+        if (param.type === "identifier" && param.text === ref.text) index = i;
+      }
+      if (index < 0) continue;
+
+      const call = p.parent?.type === "call" ? p.parent : null;
+      const m = call?.childForFieldName("method")?.text ?? "";
+      const recv = call?.childForFieldName("receiver");
+      if (index !== 0 || !recv) return null;
+      if (YIELDS_INTEGER.has(m)) return { class: "Numeric", source: "element" };
+      if (!YIELDS_ELEMENT.has(m)) return null;
+      const t = this.#receiverType(uri, recv, true);
+      return t?.class === "Array" && t.element
+        ? { class: t.element, source: "element" }
+        : null;
+    }
+    return undefined;
   }
 
   #assignedClass(rhs: Node, site: Node): string | null {

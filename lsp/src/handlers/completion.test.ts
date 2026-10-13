@@ -557,6 +557,57 @@ describe("completion", () => {
       assertEquals(at("def t\n  Helpers.‸lerp\nend\n"), ["lerp"]);
     });
 
+    it("types block parameters from an Array's known elements", () => {
+      assert(
+        at("def t\n  l = [Foe.new]\n  l.each { |e| e.‸ }\nend\n").includes(
+          "hp",
+        ),
+      );
+      assert(
+        at("def t\n  l = []\n  l.push(Foe.new)\n  l.map { |e| e.‸hp }\nend\n")
+          .includes("hp"),
+      );
+      // `@l << x` in another method, with the class body collapsed by the
+      // dangling dot.
+      assert(
+        at(
+          "class G\n  def setup\n    @l = []\n    @l << Foe.new\n  end\n  def t\n    @l.each do |e|\n      e.‸\n    end\n  end\nend\n",
+        ).includes("hp"),
+      );
+      // A block parameter shadows an outer local of the same name.
+      assert(
+        at(
+          "def t\n  e = Rig.new\n  l = [Foe.new]\n  l.each { |e| e.‸hp }\nend\n",
+        )
+          .includes("hp"),
+      );
+      assert(at("def t\n  3.times { |i| i.‸abs }\nend\n").includes("abs"));
+    });
+
+    it("types element accessors and element-preserving chains", () => {
+      const cls = (body: string) =>
+        `class G\n  def setup\n    @l = [Foe.new]\n  end\n  def t\n${body}\n  end\nend\n`;
+      assert(at(cls("    @l.first.‸hp")).includes("hp"));
+      assert(at(cls("    @l[0].‸hp")).includes("hp"));
+      assert(
+        at(cls("    @l.select { |x| x }.each { |e| e.‸hp }")).includes("hp"),
+      );
+      assert(at(cls("    @l.first(2).‸each")).includes("each"), "an Array");
+    });
+
+    it("leaves mixed or second block parameters untyped", () => {
+      assertEquals(
+        at("def t\n  l = [Foe.new, Rig.new]\n  l.each { |e| e.‸hp }\nend\n"),
+        [],
+      );
+      assertEquals(
+        at(
+          "def t\n  l = [Foe.new]\n  l.each_with_index { |e, i| i.‸abs }\nend\n",
+        ),
+        [],
+      );
+    });
+
     it("leaves parameters and self-referential locals untyped", () => {
       assertEquals(at("def t foe\n  foe.‸hp\nend\n"), []);
       assertEquals(at("def t\n  x = x\n  x.‸hp\nend\n"), []);

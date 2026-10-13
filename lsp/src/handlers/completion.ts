@@ -189,6 +189,20 @@ const constantItem = (name: string, def: Def) => ({
   ...(def.value ? { detail: `= ${def.value}` } : {}),
 });
 
+// Node types a receiver can be built from when climbing out of its last token;
+// statement containers (`block_body`, `body_statement`) end at the same column
+// but aren't the receiver.
+const RECEIVER_EXPRESSIONS = new Set([
+  "call",
+  "element_reference",
+  "argument_list",
+  "array",
+  "hash",
+  "string",
+  "parenthesized_statements",
+  "scope_resolution",
+]);
+
 // The receiver expression immediately before the completion dot. Returns the
 // full call node for a chained receiver (`camera.ui`), else the identifier/ivar.
 const receiverNode = (
@@ -209,11 +223,14 @@ const receiverNode = (
     column: dotCol - 1,
   });
   // Climb to the whole receiver expression when it ends exactly at the dot
-  // (`camera.ui.` → the `camera.ui` call, not its `ui` method name).
+  // (`camera.ui.` → the `camera.ui` call, not its `ui` method name;
+  // `list.first(2).` / `list[0].` → the call / element reference, not the
+  // closing bracket).
   while (
-    node?.parent?.type === "call" &&
+    node?.parent &&
     node.parent.endPosition.row === pos.line &&
-    node.parent.endPosition.column === dotCol
+    node.parent.endPosition.column === dotCol &&
+    RECEIVER_EXPRESSIONS.has(node.parent.type)
   ) {
     node = node.parent;
   }

@@ -84,6 +84,21 @@ const readEngineVersion = async (dir: string): Promise<string | null> => {
  * (label `"unknown"`, empty `api`/`methodDocs`, no args chains) while the
  * version-independent `coreMethods`/`literalClass` tables keep working.
  */
+// Index of the bracket opening the one that closes at `close`, or -1.
+const matchingOpen = (text: string, close: number): number => {
+  const pairs: Record<string, string> = { "]": "[", "}": "{", ")": "(" };
+  const stack: string[] = [];
+  for (let i = close; i >= 0; i--) {
+    const c = text[i];
+    if (c in pairs) stack.push(pairs[c]);
+    else if (c === stack[stack.length - 1]) {
+      stack.pop();
+      if (stack.length === 0) return i;
+    }
+  }
+  return -1;
+};
+
 export class EngineIndex {
   readonly api = new Map<string, ApiEntry[]>();
   readonly validityReceivers = new Set(["Geometry", "Easing"]);
@@ -233,12 +248,26 @@ export class EngineIndex {
 
   /** A literal receiver names its class outright — no inference needed. */
   literalClass(prefix: string): string | null {
-    const lit = prefix.match(/(\]|\}|"|'|\d)\s*\.\s*\w*$/)?.[1];
-    if (!lit) return null;
-    if (lit === "]") return "Array";
-    if (lit === "}") return "Hash";
+    const m = prefix.match(/(\]|\}|"|'|\d)\s*\.\s*\w*$/);
+    const lit = m?.[1];
+    if (!m || !lit) return null;
+    const end = m.index!; // index of the closing char
     if (lit === '"' || lit === "'") return "String";
-    return "Numeric";
+    if (lit === "]" || lit === "}") {
+      // Only a literal, not `list[0].` (indexing) or `xs.map { … }.` (a
+      // block): the char before the opening bracket must start an expression.
+      const open = matchingOpen(prefix, end);
+      if (open < 0) return null;
+      const before = prefix.slice(0, open).trimEnd();
+      const starts = before === "" ||
+        /[=(\[,{|:;]$|\b(return|then|do|else|when|in)$/
+          .test(before);
+      if (!starts) return null;
+      return lit === "]" ? "Array" : "Hash";
+    }
+    // A numeric literal, not the tail of a name (`player1.`, `@p2.`).
+    const num = prefix.slice(0, end + 1).match(/[\w@$.]*\d$/)?.[0] ?? "";
+    return /^\d[\d_]*(\.\d+)?$/.test(num) ? "Numeric" : null;
   }
 
   async #index(dir: string): Promise<void> {
