@@ -1,4 +1,9 @@
-import { CORE_CLASSES, hashLiteralKeys, literalCoreClass } from "../resolve.ts";
+import {
+  CORE_CLASSES,
+  hashLiteralKeys,
+  literalCoreClass,
+  selfIsSingleton,
+} from "../resolve.ts";
 import type { Node } from "../ruby.ts";
 import type { Def, Pos } from "../types.ts";
 import type { Ctx } from "./ctx.ts";
@@ -61,18 +66,6 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
   // `h = { f: 1 }` → `h.` completes the hash's keys (DragonRuby dot-access) too.
   const recv = receiverNode(ctx, uri, pos, prefix);
   if (recv) {
-    // `Camera.` on a workspace class/module: its class-level methods
-    // (`def self.x`, `class << self`, `extend`ed modules) up the superclass
-    // chain.
-    if (recv.type === "constant" || recv.type === "scope_resolution") {
-      const ns = resolver.resolveConstName(
-        recv.text,
-        resolver.enclosingNamespace(recv),
-      );
-      return ns
-        ? defCompletions(ctx, resolver.methodsOf(ns, { singleton: true }))
-        : [];
-    }
     const lit = literalCoreClass(recv);
     const guess = lit
       ? { class: lit, keys: recv.type === "hash" ? hashLiteralKeys(recv) : [] }
@@ -86,7 +79,20 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
       if (CORE_CLASSES.has(guess.class)) {
         return [...keyItems, ...completeCore(guess.class)];
       }
-      const typed = defCompletions(ctx, resolver.methodsOf(guess.class));
+      // `Camera.` / `self.` in a class method: class-level methods (`def
+      // self.x`, `class << self`, `extend`ed modules) up the superclass chain,
+      // plus `new` on a class. Otherwise the instance methods.
+      const singleton = "singleton" in guess && guess.singleton;
+      const typed = defCompletions(
+        ctx,
+        resolver.methodsOf(guess.class, { singleton }),
+      );
+      if (
+        singleton &&
+        resolver.namespaceIndex().get(guess.class)?.kind === "class"
+      ) {
+        typed.push({ label: "new", kind: 2, detail: `${guess.class}.new` });
+      }
       if (keyItems.length > 0 || typed.length > 0) {
         return [...keyItems, ...typed];
       }
@@ -105,9 +111,14 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
     row: pos.line,
     column: pos.character,
   });
-  const selfChain = node
-    ? new Set(resolver.ancestors(resolver.enclosingNamespace(node)))
-    : new Set<string>();
+  // Methods callable on self here: instance methods inside `def x`, class
+  // methods inside `def self.x` / `class << self`.
+  const ns = node ? resolver.enclosingNamespace(node) : "";
+  const onSelf = new Set(
+    ns && node
+      ? resolver.methodsOf(ns, { singleton: selfIsSingleton(node) })
+      : [],
+  );
 
   const items: unknown[] = resolver.localsInScope(uri, pos).map((name) => ({
     label: name,
@@ -116,12 +127,10 @@ export const completion = (ctx: Ctx, uri: string, pos: Pos): unknown[] => {
 
   for (const [name, locs] of ws.defs) {
     // Classes/modules are referenceable by name; methods only when reachable
-    // on self or from the top level (container-less), and never singletons
-    // (those are called as `Class.x`).
+    // on self or defined at the top level (container-less).
     const isConst = locs.some((l) => l.kind === "class" || l.kind === "module");
     const reachableMethod = locs.some((l) =>
-      l.kind === "method" && !l.singleton &&
-      (!l.container || selfChain.has(l.container))
+      onSelf.has(l) || (l.kind === "method" && !l.container && !l.singleton)
     );
     if (!isConst && !reachableMethod) continue;
 

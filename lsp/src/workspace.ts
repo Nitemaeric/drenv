@@ -24,6 +24,31 @@ const offsetAt = (text: string, pos: Pos): number => {
   return Math.min(lineStart + pos.character, lineEnd);
 };
 
+// A `def` in a module body that `module_function` covers: a bare
+// `module_function` earlier in the same body, or `module_function :name`
+// anywhere in it.
+const isModuleFunction = (method: Node, name: string): boolean => {
+  const body = method.parent;
+  if (body?.type !== "body_statement" || body.parent?.type !== "module") {
+    return false;
+  }
+  for (let i = 0; i < body.namedChildCount; i++) {
+    const n = body.namedChild(i)!;
+    if (n.type === "identifier" && n.text === "module_function") {
+      if (n.startIndex < method.startIndex) return true;
+    } else if (
+      n.type === "call" && !n.childForFieldName("receiver") &&
+      n.childForFieldName("method")?.text === "module_function"
+    ) {
+      const args = n.childForFieldName("arguments");
+      for (let j = 0; j < (args?.namedChildCount ?? 0); j++) {
+        if (args!.namedChild(j)!.text === `:${name}`) return true;
+      }
+    }
+  }
+  return false;
+};
+
 export class Workspace {
   readonly defs = new Map<string, Def[]>();
   generation = 0;
@@ -102,6 +127,9 @@ export class Workspace {
               ? node.childForFieldName("superclass")?.namedChild(0)?.text
               : undefined,
             ...(singleton && node.type === "method" ? { singleton: true } : {}),
+            ...(node.type === "method" && isModuleFunction(node, name.text)
+              ? { moduleFunction: true }
+              : {}),
           };
           addDef(name.text, def);
 
@@ -132,13 +160,18 @@ export class Workspace {
         const argsNode = node.childForFieldName("arguments");
         for (let i = 0; i < (argsNode?.namedChildCount ?? 0); i++) {
           const arg = argsNode!.namedChild(i)!;
-          if (arg.type !== "constant" && arg.type !== "scope_resolution") {
-            continue;
-          }
+          // `extend self` mixes the module's own instance methods in as
+          // module methods; record it by its qualified name.
+          const ref = arg.type === "self"
+            ? container
+            : arg.type === "constant" || arg.type === "scope_resolution"
+            ? arg.text
+            : null;
+          if (!ref) continue;
           const bag = kind === "include"
             ? (owner.includes ??= [])
             : (owner.extends ??= []);
-          bag.push(arg.text);
+          bag.push(ref);
         }
       }
 

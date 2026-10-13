@@ -15,8 +15,11 @@ export type LocalHit = {
  * patches Hash so `h.foo` reads `h[:foo]`, so they complete as members. */
 export type TypeGuess = {
   class: string;
-  source: "literal" | "new" | "ivar" | "return";
+  source: "literal" | "new" | "ivar" | "return" | "self" | "const";
   keys?: string[];
+  /** The receiver is the class object itself (`Camera`, `self` in a
+   * `def self.x`), so its class-level methods apply, not instance methods. */
+  singleton?: boolean;
 };
 
 // Literal RHS node type -> the core class it constructs. Numeric literals both
@@ -97,6 +100,30 @@ export const hashLiteralKeys = (hash: Node): string[] => {
 const enclosingClass = (node: Node): Node | null => {
   for (let p = node.parent; p; p = p.parent) {
     if (p.type === "class" || p.type === "module") return p;
+  }
+  return null;
+};
+
+/** Whether `self` at `node` is the class object rather than an instance: inside
+ * `def self.x`, a `class << self` body, or a class body outside any method. */
+export const selfIsSingleton = (node: Node): boolean => {
+  for (let p: Node | null = node; p; p = p.parent) {
+    if (p.type === "method") return false;
+    if (
+      p.type === "singleton_method" || p.type === "singleton_class" ||
+      p.type === "class" || p.type === "module"
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// `x = …` and `x ||= …` both bind `x` for typing purposes.
+const bindingLeft = (n: Node): Node | null => {
+  if (n.type === "assignment") return n.childForFieldName("left");
+  if (n.type === "operator_assignment" && n.child(1)?.type === "||=") {
+    return n.childForFieldName("left");
   }
   return null;
 };
@@ -359,7 +386,7 @@ export class Resolver implements ConstResolver {
       // `extend`s (extend adds a module's instance methods as class methods).
       for (const ns of this.#classChain(qualifiedClass)) {
         for (const m of this.#methodsByContainer.get(ns) ?? []) {
-          if (m.singleton) out.push(m);
+          if (m.singleton || m.moduleFunction) out.push(m);
         }
         for (const mod of this.#mixins(ns).extends) {
           const q = this.resolveConstName(mod, ns);
@@ -483,8 +510,30 @@ export class Resolver implements ConstResolver {
     ) {
       return this.#typeIvar(receiver);
     }
-    if (receiver.type === "call" && allowReturn) {
-      return this.#typeReturn(uri, receiver);
+    if (receiver.type === "self") {
+      const ns = this.enclosingNamespace(receiver);
+      return ns
+        ? { class: ns, source: "self", singleton: selfIsSingleton(receiver) }
+        : null;
+    }
+    if (receiver.type === "constant" || receiver.type === "scope_resolution") {
+      const ns = this.resolveConstName(
+        receiver.text,
+        this.enclosingNamespace(receiver),
+      );
+      return ns ? { class: ns, source: "const", singleton: true } : null;
+    }
+    if (receiver.type === "call") {
+      // `Klass.new` is a direct instantiation, not an inference hop.
+      const path = newTargetPath(receiver);
+      if (path) {
+        const cls = this.resolveConstName(
+          path,
+          this.enclosingNamespace(receiver),
+        );
+        return cls ? { class: cls, source: "new" } : null;
+      }
+      if (allowReturn) return this.#typeReturn(uri, receiver);
     }
     return null;
   }
@@ -499,20 +548,28 @@ export class Resolver implements ConstResolver {
 
     let best: Node | null = null;
     const scan = (n: Node) => {
-      if (n.type === "assignment") {
-        const left = n.childForFieldName("left");
-        if (
-          left?.type === "identifier" && left.text === name &&
-          n.startIndex < receiver.startIndex &&
-          (!best || n.startIndex > best.startIndex)
-        ) {
-          best = n;
-        }
+      const left = bindingLeft(n);
+      if (
+        left?.type === "identifier" && left.text === name &&
+        n.endIndex <= receiver.startIndex &&
+        (!best || n.startIndex > best.startIndex)
+      ) {
+        best = n;
       }
       for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
     };
     scan(scope);
-    const rhs = (best as Node | null)?.childForFieldName("right");
+    if (!best) {
+      // Never assigned here: a parameter (untyped) or a bare call on self.
+      const at = {
+        line: receiver.startPosition.row,
+        character: receiver.startPosition.column,
+      };
+      return this.localsInScope(uri, at).includes(name)
+        ? null
+        : this.#typeReturnOf(uri, name, null, receiver);
+    }
+    const rhs = (best as Node).childForFieldName("right");
     if (!rhs) return null;
 
     const core = LITERAL_CLASS[rhs.type];
@@ -533,6 +590,15 @@ export class Resolver implements ConstResolver {
       );
       if (cls) return { class: cls, source: "new" };
     }
+    // `b = boss` / `b = cam.boss` / `b = @anim`: the local takes whatever the
+    // right-hand side types to on its own.
+    if (
+      ["call", "identifier", "instance_variable", "class_variable"].includes(
+        rhs.type,
+      )
+    ) {
+      return this.#receiverType(uri, rhs, true);
+    }
     return null;
   }
 
@@ -551,13 +617,11 @@ export class Resolver implements ConstResolver {
     const types: (string | null)[] = [];
     const rhsNodes: Node[] = [];
     const scan = (n: Node) => {
-      if (n.type === "assignment") {
-        const left = n.childForFieldName("left");
-        if (left?.type === receiver.type && left.text === name) {
-          const rhs = n.childForFieldName("right");
-          types.push(rhs ? this.#assignedClass(rhs, left) : null);
-          if (rhs) rhsNodes.push(rhs);
-        }
+      const left = bindingLeft(n);
+      if (left?.type === receiver.type && left.text === name) {
+        const rhs = n.childForFieldName("right");
+        types.push(rhs ? this.#assignedClass(rhs, left) : null);
+        if (rhs) rhsNodes.push(rhs);
       }
       for (let i = 0; i < n.namedChildCount; i++) scan(n.namedChild(i)!);
     };
@@ -593,7 +657,23 @@ export class Resolver implements ConstResolver {
   #typeReturn(uri: string, receiver: Node): TypeGuess | null {
     const nameNode = receiver.childForFieldName("method");
     if (!nameNode) return null;
-    const candidates = (this.#ws.defs.get(nameNode.text) ?? []).filter((d) =>
+    return this.#typeReturnOf(
+      uri,
+      nameNode.text,
+      receiver.childForFieldName("receiver"),
+      receiver,
+    );
+  }
+
+  // `recv` null is a bare call on self: candidates narrow to the enclosing
+  // class chain (or top-level defs) rather than the receiver's type.
+  #typeReturnOf(
+    uri: string,
+    name: string,
+    recv: Node | null,
+    site: Node,
+  ): TypeGuess | null {
+    const candidates = (this.#ws.defs.get(name) ?? []).filter((d) =>
       d.kind === "method"
     );
     if (candidates.length === 0) return null;
@@ -602,10 +682,12 @@ export class Resolver implements ConstResolver {
     if (new Set(candidates.map((c) => c.container ?? "")).size === 1) {
       target = candidates[0];
     } else {
-      const recv = receiver.childForFieldName("receiver");
-      const recvType = recv ? this.#receiverType(uri, recv, false) : null;
+      const recvType = recv
+        ? this.#receiverType(uri, recv, false)
+        : { class: this.enclosingNamespace(site) };
       if (recvType) {
-        const chain = new Set(this.ancestors(recvType.class));
+        const chain = new Set(["", ...this.ancestors(recvType.class)]);
+        if (recv) chain.delete("");
         const inChain = candidates.filter((c) => chain.has(c.container ?? ""));
         if (new Set(inChain.map((c) => c.container ?? "")).size === 1) {
           target = inChain[0];

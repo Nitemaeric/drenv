@@ -472,6 +472,97 @@ describe("completion", () => {
     assert(!labels.includes("Camera"), "not the bare-identifier list");
   });
 
+  describe("receiver typing", () => {
+    const LIB = [
+      "module Util",
+      "  extend self",
+      "  def clamp v, lo, hi",
+      "  end",
+      "end",
+      "module Helpers",
+      "  module_function",
+      "  def lerp a, b, t",
+      "  end",
+      "end",
+      "class Foe",
+      "  def hp",
+      "  end",
+      "end",
+      "class Rig",
+      "  # @return [Foe]",
+      "  def boss",
+      "  end",
+      "  def self.make",
+      "  end",
+      "end",
+      "",
+    ].join("\n");
+    let n = 0;
+    // Completion labels at the `‸` marker of `src`, indexed beside LIB.
+    const at = (src: string): string[] => {
+      ctx.ws.indexFile("file:///test/rt-lib.rb", LIB);
+      const u = `file:///test/rt-${n++}.rb`;
+      const lines = src.split("\n");
+      const line = lines.findIndex((l) => l.includes("‸"));
+      ctx.ws.indexFile(u, src.replace("‸", ""));
+      return labelsOf(
+        completion(ctx, u, { line, character: lines[line].indexOf("‸") }),
+      );
+    };
+    const inRig = (body: string) => `class Rig\n  def t\n${body}\n  end\nend\n`;
+
+    it("types self as the instance inside `def x`", () => {
+      const labels = at(inRig("    self.‸boss"));
+      assert(labels.includes("boss"));
+      assert(!labels.includes("make"));
+    });
+
+    it("types self as the class inside `def self.x`", () => {
+      const labels = at(
+        "class Rig\n  def self.x\n    self.‸make\n  end\nend\n",
+      );
+      assert(labels.includes("make"));
+      assert(labels.includes("new"));
+      assert(!labels.includes("boss"));
+    });
+
+    it("offers class methods, not instance ones, to bare calls in `def self.x`", () => {
+      const labels = at("class Rig\n  def self.x\n    ma‸\n  end\nend\n");
+      assert(labels.includes("make"));
+      assert(!labels.includes("boss"));
+    });
+
+    it("types `Klass.new.` directly", () => {
+      assert(at("def t\n  Foe.new.‸hp\nend\n").includes("hp"));
+    });
+
+    it("types a local assigned from a call, bare or with a receiver", () => {
+      assert(at(inRig("    b = boss\n    b.‸hp")).includes("hp"));
+      assert(at(inRig("    boss.‸hp")).includes("hp"));
+      assert(
+        at("def t\n  r = Rig.new\n  b = r.boss\n  b.‸hp\nend\n").includes("hp"),
+      );
+    });
+
+    it("types `||=` assignments for locals and ivars", () => {
+      assert(at("def t\n  x ||= Foe.new\n  x.‸hp\nend\n").includes("hp"));
+      assert(
+        at("class G\n  def t\n    @r ||= Rig.new\n    @r.‸boss\n  end\nend\n")
+          .includes("boss"),
+      );
+    });
+
+    it("completes `extend self` and `module_function` modules", () => {
+      assertEquals(at("def t\n  Util.‸clamp\nend\n"), ["clamp"]);
+      assertEquals(at("def t\n  Helpers.‸lerp\nend\n"), ["lerp"]);
+    });
+
+    it("leaves parameters and self-referential locals untyped", () => {
+      assertEquals(at("def t foe\n  foe.‸hp\nend\n"), []);
+      assertEquals(at("def t\n  x = x\n  x.‸hp\nend\n"), []);
+    });
+  });
+
   it("returns nothing for a member access on an untypeable receiver", () => {
     const u = "file:///test/untyped.rb";
     // `mystery` is a bare method call — no known type — so `.` completes to
